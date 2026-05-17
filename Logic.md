@@ -1,58 +1,116 @@
-# Color Scale Generation Logic
+# Scaly Plugin - Technical Documentation
 
-This document outlines the exact logic and algorithms used to generate the color scale and its variants. This will serve as a reference for migrating the tool to a Figma plugin.
-
-## 1. Input Handling
-- **Input:** A valid hex color code (e.g., `#3B82F6`).
-- **Color Space:** The input color is immediately converted to the **OKLCH** color space (Lightness `L`, Chroma `C`, Hue `H`) using the `chroma-js` library. OKLCH is used because it corresponds closely to human perception of lightness and saturation.
+Tài liệu này mô tả chi tiết kiến trúc, cấu trúc dữ liệu, thuật toán lõi và các tính năng của plugin Scaly - công cụ tạo dải màu (Color Scale Generator) dành cho Figma.
 
 ---
 
-## 2. Root Variants Generation
-Based on the input color, the system first calculates an initial scale to find the "true 500" shade (the middle step of the generated scale). This ensures that the generated variants act as proper middle-tones regardless of whether the original input was extremely light or dark.
-
-Using this "true 500" shade as the base, the system generates **4 different variants** (Roots). These variants offer different levels of saturation and hue shifts to give the user options for their "500" baseline color.
-
-| Variant | L (Lightness) | C (Chroma / Saturation) | H (Hue) | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| **0 (Original)** | `baseL` | `baseC` | `baseH` | The exact original color input. |
-| **1 (Shift Right)**| `baseL` | `min(baseC + 0.04, 0.32)` | `baseH + 10` | Slightly more saturated, Hue shifted +10 degrees. |
-| **2 (Shift Left)** | `baseL` | `min(baseC + 0.04, 0.32)` | `baseH - 10` | Slightly more saturated, Hue shifted -10 degrees. |
-| **3 (High Sat)** | `baseL` | `min(baseC + 0.08, 0.35)` | `baseH` | Highly saturated, Hue remains unchanged. |
-
-*Note: Chroma is capped at `0.32` and `0.35` to prevent the colors from falling too far out of the sRGB gamut.*
+## 1. Tổng quan Project (Overview)
+- **Mục đích**: Tạo ra các dải màu có độ tương phản và chuyển màu mượt mà dựa trên không gian màu **OKLCH** (không gian màu hiện đại giúp giữ nguyên cảm nhận về độ sáng khi thay đổi sắc độ).
+- **Tech Stack**:
+  - UI: React, TailwindCSS.
+  - Color Math: `chroma-js`.
+  - Kéo thả (Drag & Drop): `@dnd-kit` (core & sortable).
+  - Bundler: Vite.
+  - Figma Plugin API.
 
 ---
 
-## 3. Shade Scale Generation
-When a Root Variant is selected, the system builds an `N`-step scale (typically 11 steps for Tailwind).
+## 2. Cấu trúc Dữ liệu (Data Structures)
 
-### Step 3.1: Define Target Lightness (`targetL`)
-A predefined array of target Lightness values is used to mimic Tailwind's visual distribution:
-- **11 Steps (Tailwind):** `[0.98, 0.95, 0.90, 0.82, 0.72, 0.60, 0.50, 0.40, 0.30, 0.20, 0.15]`
-- **Other Steps:** Generated dynamically using a non-linear easing curve `0.98 - Math.pow(t, 1.2) * (0.98 - 0.15)` where `t` is the progression from `0` to `1`.
+### 2.1. `ColorNode` (Đại diện cho 1 ô màu / Shade)
+Mỗi ô màu trong dải được định nghĩa bởi object này:
+```typescript
+type ColorNode = {
+  id: string;          // ID duy nhất dùng cho dnd-kit và React keys
+  index: number;       // Vị trí hiện tại trong dải màu (0 -> stepCount + 1)
+  label: string | number; // Nhãn hiển thị cố định (VD: "white", 50, 100, ..., 950, "black")
+  hex: string | null;  // Mã màu Hex. Nếu không phải là Anchor, giá trị này sẽ bị ghi đè bởi thuật toán nội suy.
+  isAnchor: boolean;   // Đánh dấu đây có phải là điểm neo cố định không.
+  locked: boolean;     // Khóa vị trí (chỉ True đối với White ở đầu và Black ở cuối).
+};
+```
 
-### Step 3.2: Find Base Index
-The algorithm loops through the `targetL` array and finds the index `i` where the difference `Math.abs(baseL - targetL[i])` is the smallest.
-- This index becomes the **`baseIndex`** (the anchor point for the original color).
+### 2.2. `ScaleData` (Đại diện cho 1 dải màu)
+```typescript
+interface ScaleData {
+  id: string;
+  name: string;
+  stepCount: number;   // Số lượng ô màu do user chọn (9, 11, 13, 15)
+  nodes: ColorNode[];  // Mảng các ô màu đang hiển thị (bao gồm cả White và Black)
+  
+  // Master Map (BỘ NHỚ BỀN VỮNG)
+  // Lưu trữ mọi điểm neo user từng tạo dưới dạng Key-Value: { "label": "hex" }
+  // VD: { "500": "#FF0000", "25": "#FEFEFE" }
+  fullAnchorMap: Record<string, string>; 
+}
+```
 
-### Step 3.3: Smooth out Lightness (`L_array`)
-To ensure the scale passes *exactly* through the base color's lightness:
-- `L_array[baseIndex] = baseL`
-- For lighter shades (`i < baseIndex`): Interpolate linearly between the brightest target (`targetL[0]`) and `baseL`.
-- For darker shades (`i > baseIndex`): Interpolate linearly between `baseL` and the darkest target (`targetL[steps - 1]`).
+---
 
-### Step 3.4: Smooth out Chroma (`C_array`)
-Chroma (Saturation) naturally drops off at extreme lightness (white) and darkness (black). A sine wave bell curve is used to simulate this:
-- **Time variable:** `t = i / (steps - 1)`
-- **Sine Wave Factor:** `factor = 0.1 + 0.9 * Math.sin(t * Math.PI)` (Values range from `0.1` at the edges to `1.0` in the middle).
-- **Calculate Max Chroma:** To ensure the curve perfectly hits the `baseC` at `baseIndex`, we calculate the peak of the curve: 
-  `maxC = baseC / baseFactor_at_baseIndex`
-- **Apply Curve:** `C_array[i] = maxC * factor`.
-- **Anchor:** Force `C_array[baseIndex] = baseC`.
+## 3. Thuật toán Lõi (Core Algorithms)
 
-### Step 3.5: Build Final Colors
-- The final color for step `i` is generated by combining `oklch(L_array[i], C_array[i], baseH)`.
-- At `i === baseIndex`, the exact hex of the root variant is forced to avoid decimal rounding errors.
-- **Naming:** If 11 steps are used, they are named `50, 100, 200... 950`.
-- **Highlight:** An asterisk `*` is appended to the name of the `baseIndex` step (e.g., `500*`).
+### 3.1. Nội suy màu sắc (`interpolateColors`)
+Đây là trái tim của plugin, chịu trách nhiệm tính toán các màu nằm giữa các điểm neo.
+- **Input**: Mảng `currentNodes`.
+- **Logic**:
+  1. Lọc ra danh sách các `anchors` (`isAnchor === true`) và sắp xếp theo `index`.
+  2. Nếu không có anchor nào (hiếm), trả về mảng gốc.
+  3. Nếu chỉ có **1 điểm neo** (không tính White/Black), nó sẽ tạo dải nội suy 3 điểm: `White -> Anchor -> Black`.
+  4. Nếu có **>= 2 điểm neo**, nó nội suy qua tất cả các điểm neo đó.
+  5. Sử dụng `chroma.scale(colors).domain(domain).mode('oklch')` để tạo hàm nội suy.
+  6. Lặp qua tất cả `currentNodes`: Nếu ô đó là Anchor thì giữ nguyên, nếu không thì dùng hàm `scale` để tính ra mã Hex mới dựa trên `index`.
+
+### 3.2. Hệ thống Nhãn màu (`getLabel`)
+Hàm `getLabel(idx, stepCount)` là mapping logic chuyển đổi từ vị trí mảng (index) sang tên nhãn thực tế (50, 100, 200...).
+- Nhãn phụ thuộc vào `stepCount`. 
+- VD: Ở 11 steps, index 1 là "50". Nhưng ở 13 steps, index 1 là "25", index 2 mới là "50".
+- *Lý do dùng Nhãn*: Nhãn là giá trị "bất biến" duy nhất khi user thay đổi `stepCount`.
+
+---
+
+## 4. Phân tích Các Tính năng (Features Deep Dive)
+
+### 4.1. Hệ thống "Trí nhớ" Điểm neo (Anchor Persistence)
+*Vấn đề:* Khi đổi từ 11 steps sang 15 steps, mảng `nodes` bị tạo mới hoàn toàn, làm mất các Anchor.
+*Giải pháp `fullAnchorMap`:*
+- Mọi thao tác thêm/sửa/xóa/kéo thả Anchor đều được đồng bộ ngay lập tức vào `fullAnchorMap` thông qua `label`.
+- Hàm `handleStepCountChange`: Khi user đổi Step, hệ thống tạo mảng `nodes` mới, sau đó duyệt qua `fullAnchorMap`. Nếu `label` của Node mới tồn tại trong Map, nó được khôi phục thành Anchor với mã Hex tương ứng.
+- **Hidden Anchors**: Nếu một Anchor nằm ở `label` không tồn tại trong step count hiện tại (VD: label "25" không có ở 9 steps), nó sẽ không xuất hiện trong mảng `nodes` (bị ẩn đi), nhưng vẫn tồn tại trong `fullAnchorMap`. Khi user quay lại step count phù hợp, nó sẽ tự hiện ra lại.
+
+### 4.2. Xử lý Kéo thả (Drag & Drop)
+- **Thư viện**: `@dnd-kit`.
+- **Cấu hình**: `activationConstraint: { distance: 5 }` (Phải kéo chuột xa hơn 5px mới tính là drag, tránh xung đột với sự kiện click).
+- **Logic `handleDragEnd`**:
+  1. Đổi vị trí 2 Node trong mảng bằng `arrayMove`.
+  2. Gán lại `index` cho toàn bộ mảng.
+  3. Tính lại `label` mới cho toàn bộ mảng dựa trên `index` mới.
+  4. **Auto-Anchor**: Node vừa được kéo mặc định sẽ gán `isAnchor = true`.
+  5. Ghi đè mã Hex của Node đó vào `fullAnchorMap` tại key là `label` mới của nó.
+  6. Chạy lại `interpolateColors` để tính lại dải màu.
+
+### 4.3. Chỉnh sửa Màu (Color Edit Sliders)
+Component `ColorPicker` không dùng color picker mặc định của trình duyệt mà tự code 3 thanh trượt Hue, Saturation, Lightness.
+- **Smart State Preservation**: Hàm `chroma.hsl()` có một nhược điểm toán học là khi Lightness (L) = 0 (Đen) hoặc 1 (Trắng), Hue và Saturation sẽ mất ý nghĩa và biến thành 0 hoặc `NaN`. 
+- *Cách fix trong code*: Bắt sự kiện trong `useEffect` và `onChange`, nếu phát hiện `L === 0` hoặc `L === 1`, hệ thống sẽ sử dụng lại giá trị Hue và Saturation từ State cũ, tránh việc thanh trượt bị nhảy về 0 một cách vô lý.
+
+### 4.4. Copy & Toast Notification
+- Ô màu có gắn sự kiện `onClick` (không bị trùng lặp với Drag nhờ constraint 5px).
+- Góp nhặt mã màu: `navigator.clipboard.writeText(hex)`.
+- **Toast**: Được quản lý ở root `App` thông qua state `toast: string | null`. Hiển thị fixed ở top màn hình với animation CSS `animate-in fade-in slide-in-from-top-4`, tự động tắt sau 2000ms thông qua `setTimeout`.
+
+---
+
+## 5. Giao diện (UI/UX)
+- **Theme**: Hỗ trợ Light/Dark mode. Chuyển đổi bằng state `theme`. Class CSS được toggle tự động (Sử dụng Tailwind `dark` class hoặc điều kiện inline).
+- **Gradient Bar**: Nằm dưới các ô màu. Được render bằng một thẻ `div` với style `background: linear-gradient(to right, ...)`. Danh sách màu đưa vào hàm `linear-gradient` chính là các màu từ mảng `nodes` sau khi đã nội suy, tạo ra dải màu liên tục trực quan hóa quá trình OKLCH đang làm việc.
+- **Thanh trượt Tối giản**: Để tạo thumb (chấm tròn kéo thả) đen hoàn toàn, không có viền bóng mặc định của trình duyệt, đã sử dụng CSS overrides trong `index.css` cho psuedo-elements `::-webkit-slider-thumb` và `::-moz-range-thumb`.
+
+---
+
+## 6. Figma Communication
+Khi user bấm "Create Figma Styles":
+1. Hàm `generateFigmaNodes` được gọi.
+2. Lọc bỏ `White` (index 0) và `Black` (index cuối) vì chúng chỉ dùng để chốt nội suy, không thuộc về output.
+3. Chuyển đổi mã Hex sang định dạng RGB mà Figma API yêu cầu (Object `{r, g, b}` với giá trị từ 0 -> 1).
+4. Gửi thông điệp: `parent.postMessage({ pluginMessage: { type: 'GENERATE_SCALE', scales: allScaleNodes } }, '*')`.
+5. Figma backend (`code.ts`) nhận data và tiến hành tạo Frame, Rectangle, Text và gán Local Styles.

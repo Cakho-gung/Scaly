@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: #f5f5f5;
+  color: #333;
+}
+
+::selection {
+  background-color: #1a1a1a;
+  color: #ffffff;
+}
+
+.dark ::selection {
+  background-color: #ffffff;
+  color: #1a1a1a;
+}
+
+input[type=range].color-slider {
+  appearance: none;
+  border-radius: 9999px;
+  outline: none;
+}
+
+input[type=range].color-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #000;
+  border: none;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.dark input[type=range].color-slider::-webkit-slider-thumb {
+  background: #fff;
+}
+
+input[type=range].color-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #000;
+  border: none;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.dark input[type=range].color-slider::-moz-range-thumb {
+  background: #fff;
+}
+
+select option {
+  padding: 8px;
+  background-color: white;
+  color: #111;
+}
+
+.dark select option {
+  background-color: #0F0F1C;
+  color: white;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+* {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}

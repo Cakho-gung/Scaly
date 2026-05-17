@@ -2,10 +2,14 @@
   "compilerOptions": {
     "target": "es2020",
     "lib": ["es2020"],
+    "moduleResolution": "node",
     "strict": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
     "typeRoots": [
       "./node_modules/@types",
       "./node_modules/@figma"
     ]
-  }
+  },
+  "include": ["code.ts"]
 }
