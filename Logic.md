@@ -114,3 +114,71 @@ Khi user bấm "Create Figma Styles":
 3. Chuyển đổi mã Hex sang định dạng RGB mà Figma API yêu cầu (Object `{r, g, b}` với giá trị từ 0 -> 1).
 4. Gửi thông điệp: `parent.postMessage({ pluginMessage: { type: 'GENERATE_SCALE', scales: allScaleNodes } }, '*')`.
 5. Figma backend (`code.ts`) nhận data và tiến hành tạo Frame, Rectangle, Text và gán Local Styles.
+
+---
+
+## 7. Figma Plugin Icons & Community Assets Guidelines
+
+This section describes how the visual identity (icons, cover art, and assets) of the **Scaly** plugin is handled in different environments:
+
+### 7.1. Figma Community Publish (Official Release)
+When publishing your plugin to the official Figma Community store:
+* **Dashboard Upload**: Figma handles the official plugin logo, cover banners, description, and screenshots directly via the **Figma Web Publishing Dashboard** on Figma.com.
+* **Asset Specifications**:
+  * **Plugin Icon**: Must be a square artwork. Suggested sizes are **128x128px** or **256x256px** (PNG, JPG, or SVG).
+  * **Cover Art**: A landscape banner of **1920x960px** (2:1 aspect ratio) representing the plugin's branding.
+
+### 7.2. Local Development (Figma Desktop / Browser)
+* **Local Manifest Limitation**: Figma's `manifest.json` schema is highly strict. It **does not support** a top-level `"icon"` key. Adding `"icon": "icon.png"` at the root of `manifest.json` will trigger a compile/validation error: `Manifest has unexpected extra property: icon`.
+* **Icon in Local Lists**: Figma displays a default grey puzzle-piece icon for all local development plugins. This is normal developer behavior and cannot be bypassed locally via manifest files.
+* **Safe Keep**: Keep `icon.png` in the root directory as an asset so you can easily select and upload it when going through the online Figma Community publishing flow.
+
+### 7.3. Browser Favicon (Development Web App)
+If you run the UI standalone in your browser for rapid mockup testing (e.g., using `npm run dev` or equivalent Vite servers), you can configure a standard website favicon by placing a `<link>` tag in the `<head>` section of `index.html`:
+```html
+<link rel="icon" type="image/png" href="/icon.png" />
+```
+
+---
+
+## 8. Figma Community Listing Copy
+
+Here is the highly polished, professional, and descriptive English copy ready for you to copy and paste into the Figma Community publishing form:
+
+### 8.1. Name
+`Scaly` (or `Scaly - OKLCH Color Scale Generator`)
+
+### 8.2. Tagline
+`The ultimate OKLCH color scale generator with persistent anchors, styles, and variables export.`
+
+### 8.3. Description
+
+```markdown
+🎨 Create perfectly balanced, visually uniform color systems with Scaly—the advanced OKLCH-based color scale generator for Figma.
+
+No more awkward, muddy, or gray-ish intermediate tones. Scaly utilizes the modern OKLCH color space to calculate smooth color gradients that preserve perceived lightness and uniform brightness across all color steps.
+
+⚡ KEY FEATURES
+
+1️⃣ OKLCH Interpolation: Generates highly vibrant and mathematically balanced color palettes.
+2️⃣ Persistent Anchors: Pin specific key colors as anchor points (marked with '*'). Locked key colors persist and auto-align even when changing step counts (9, 11, 13, or 15 steps).
+3️⃣ Smart Drag & Drop: Drag color nodes to rearrange shades easily with intuitive live rendering.
+4️⃣ Two-way Variables & Styles Import/Export:
+   • Export generated palettes directly to Figma Local Variables and Paint Styles with support for 'Append' or 'Replace'.
+   • Import your existing Variables or Styles back into Scaly to fine-tune, modify, or extend them.
+5️⃣ Precision Sliders: Tweak HSL parameters with high-accuracy sliders designed to preserve colors even at pure black or white limits.
+6️⃣ Beautiful Fluid UI: Supports dark/light mode toggle with a premium glassmorphic interface and instant clipboard copies.
+
+🚀 HOW TO USE
+
+1. Open Scaly inside your Figma file.
+2. Select your base color or import existing variables/styles.
+3. Lock/unlock key shades as anchors, adjust step counts, and drag color nodes to refine the palette.
+4. Click 'Export' to create variables or styles, or generate color rectangles directly in your workspace.
+```
+
+### 8.4. Category
+`Design tools` or `Development`
+
+### 8.5. Tags (Keywords)
+`color`, `palette`, `generator`, `oklch`, `variables`, `tokens`, `styles`, `contrast`, `design-system`

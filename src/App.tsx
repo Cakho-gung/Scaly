@@ -19,6 +19,47 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Anchor, RotateCcw, Check, Pencil, Trash2, Plus, X, Moon, Sun } from 'lucide-react';
 
+interface CustomCheckboxProps {
+  checked: boolean;
+  indeterminate?: boolean;
+  onChange: (checked: boolean) => void;
+  theme: 'light' | 'dark';
+  size?: 'sm' | 'md';
+}
+
+const CustomCheckbox: React.FC<CustomCheckboxProps> = ({ checked, indeterminate, onChange, theme, size = 'md' }) => {
+  const sizeClass = size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4';
+  const iconSizeClass = size === 'sm' ? 'w-2 h-2' : 'w-2.5 h-2.5';
+  
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onChange(!checked);
+      }}
+      className={`flex items-center justify-center rounded-[6px] border transition-all duration-150 focus:outline-none shrink-0 ${sizeClass} ${
+        checked || indeterminate
+          ? (theme === 'light' 
+              ? 'bg-slate-900 border-slate-900 text-white shadow-sm' 
+              : 'bg-white border-white text-black shadow-sm')
+          : (theme === 'light'
+              ? 'border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50'
+              : 'border-white/20 hover:border-white/30 bg-transparent hover:bg-white/5')
+      }`}
+    >
+      {checked && !indeterminate && (
+        <svg className={iconSizeClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      )}
+      {indeterminate && (
+        <div className={`h-[1.5px] w-1.5 rounded-full ${theme === 'light' ? 'bg-white' : 'bg-black'}`} />
+      )}
+    </button>
+  );
+};
+
 type ColorNode = {
   id: string;
   index: number;
@@ -37,23 +78,72 @@ interface ScaleData {
 }
 
 const createDefaultNodes = (stepCount: number, existingAnchors?: Record<string, string>): ColorNode[] => {
-  const totalNodes = stepCount + 2;
-  const initialNodes = Array.from({ length: totalNodes }).map((_, i) => {
-    const label = getLabel(i, stepCount);
-    const labelStr = String(label);
-    
-    // Check if we have a persistent anchor for this label
-    const hexFromAnchor = existingAnchors ? existingAnchors[labelStr] : null;
-    
-    return {
-      id: `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${i}`,
-      index: i,
-      label,
-      hex: hexFromAnchor || (i === 0 ? '#ffffff' : i === totalNodes - 1 ? '#000000' : null),
-      isAnchor: !!hexFromAnchor || i === 0 || i === totalNodes - 1,
-      locked: i === 0 || i === totalNodes - 1,
-    };
+  const anchors = existingAnchors || {};
+
+  // The stepCount "middle" slots (white/black bracket these, handled separately below)
+  const slotLabels: (string | number)[] = [];
+  for (let i = 1; i <= stepCount; i++) slotLabels.push(getLabel(i, stepCount));
+
+  // Every anchor keeps its slot count across a stepCount switch — only its position may
+  // move. Each anchor's ideal slot is whichever standard label is numerically closest to
+  // it (e.g. "50" is closest to "100" on a 9-step grid). When two or more anchors want the
+  // same slot, they're pushed apart in order (never past their neighbor), which cascades
+  // outer anchors inward exactly as far as needed to fit everyone with no overlap — e.g.
+  // "50" and "100" both wanting slot "100" become "100" and "200". If there are literally
+  // more anchors than slots, the ones that don't fit collapse onto their nearest neighbor.
+  const middleAnchors = Object.entries(anchors)
+    .filter(([labelStr]) => labelStr !== 'white' && labelStr !== 'black')
+    .map(([labelStr, hex]) => ({ value: Number(labelStr), hex }))
+    .sort((a, b) => a.value - b.value);
+
+  const idealSlot = middleAnchors.map(a => {
+    let bestIdx = 0, bestDist = Infinity;
+    slotLabels.forEach((label, idx) => {
+      const dist = Math.abs(Number(label) - a.value);
+      if (dist < bestDist) { bestDist = dist; bestIdx = idx; }
+    });
+    return bestIdx;
   });
+
+  // Forward pass: push later anchors up so no two share a slot
+  const assignedSlot = idealSlot.slice();
+  for (let k = 1; k < assignedSlot.length; k++) {
+    if (assignedSlot[k] <= assignedSlot[k - 1]) assignedSlot[k] = assignedSlot[k - 1] + 1;
+  }
+  // Backward pass: pull back under the top boundary, tightening any slack left by the forward pass
+  for (let k = assignedSlot.length - 1; k >= 0; k--) {
+    const upperBound = k === assignedSlot.length - 1 ? stepCount - 1 : assignedSlot[k + 1] - 1;
+    if (assignedSlot[k] > upperBound) assignedSlot[k] = upperBound;
+  }
+  // More anchors than slots (unusual): clamp into range, letting the overflow collapse together
+  for (let k = 0; k < assignedSlot.length; k++) {
+    assignedSlot[k] = Math.max(0, Math.min(stepCount - 1, assignedSlot[k]));
+  }
+
+  const slotAnchorHex: (string | null)[] = new Array(stepCount).fill(null);
+  middleAnchors.forEach((a, k) => { slotAnchorHex[assignedSlot[k]] = a.hex; });
+
+  type Entry = { label: string | number; hex: string | null; isAnchor: boolean; locked: boolean };
+  const entries: Entry[] = [
+    { label: 'white', hex: anchors['white'] || '#ffffff', isAnchor: true, locked: true },
+    ...slotLabels.map((label, idx) => ({
+      label,
+      hex: slotAnchorHex[idx],
+      isAnchor: slotAnchorHex[idx] !== null,
+      locked: false,
+    })),
+    { label: 'black', hex: anchors['black'] || '#000000', isAnchor: true, locked: true },
+  ];
+
+  const initialNodes: ColorNode[] = entries.map((e, i) => ({
+    id: `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${i}`,
+    index: i,
+    label: e.label,
+    hex: e.hex,
+    isAnchor: e.isAnchor,
+    locked: e.locked,
+  }));
+
   return interpolateColors(initialNodes);
 };
 
@@ -146,7 +236,7 @@ const ToastNotification = ({ message, theme, onClose }: { message: string, theme
 };
 
 // Sortable Item Component
-const SortableColorNode = ({ node, stepCount, theme, onToggleAnchor, onShowToast }: { node: ColorNode, stepCount: number, theme: 'light' | 'dark', onToggleAnchor: () => void, onShowToast: (msg: string) => void }) => {
+const SortableColorNode = ({ node, theme, onToggleAnchor, onShowToast }: { node: ColorNode, theme: 'light' | 'dark', onToggleAnchor: () => void, onShowToast: (msg: string) => void }) => {
   const {
     attributes,
     listeners,
@@ -162,7 +252,7 @@ const SortableColorNode = ({ node, stepCount, theme, onToggleAnchor, onShowToast
     zIndex: isDragging ? 10 : 1,
   };
 
-  const labelValue = getLabel(node.index, stepCount);
+  const labelValue = node.label;
   const hexDisplay = node.hex ? node.hex.toUpperCase().replace('#', '') : '------';
 
   const copyToClipboard = (e: React.MouseEvent) => {
@@ -251,6 +341,17 @@ const interpolateColors = (currentNodes: ColorNode[]) => {
       hex: scale(node.index).hex(),
     };
   });
+};
+
+// fullAnchorMap is always derived from the live nodes array rather than patched
+// incrementally — every anchor is fully represented in nodes (standard or custom slot),
+// so recomputing from scratch avoids stale keys surviving relabels (e.g. drag reorders).
+const buildAnchorMap = (nodes: ColorNode[]): Record<string, string> => {
+  const map: Record<string, string> = {};
+  nodes.forEach(n => {
+    if (n.isAnchor && n.hex) map[String(n.label)] = n.hex;
+  });
+  return map;
 };
 
 const ColorPicker = ({ color, onChange, theme }: { color: string, onChange: (color: string) => void, theme: 'light' | 'dark' }) => {
@@ -513,6 +614,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [activeScaleId, setActiveScaleId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'color' | 'typo'>('color');
   
   // Track editing state per scale
   const [editingScaleId, setEditingScaleId] = useState<string | null>(null);
@@ -575,14 +677,8 @@ export default function App() {
   const handleStepCountChange = (scaleId: string, stepCount: number) => {
     setScales(prev => prev.map(s => {
       if (s.id !== scaleId) return s;
-      
-      // Update master map with current anchors
-      const currentAnchors = { ...s.fullAnchorMap };
-      s.nodes.forEach(node => {
-        if (node.isAnchor && node.hex) {
-          currentAnchors[String(node.label)] = node.hex;
-        }
-      });
+
+      const currentAnchors = buildAnchorMap(s.nodes);
 
       return {
         ...s,
@@ -618,30 +714,20 @@ export default function App() {
   const removeAnchor = (scaleId: string, anchorId: string) => {
     setScales(prev => prev.map(s => {
       if (s.id !== scaleId) return s;
-      
-      const targetNode = s.nodes.find(n => n.id === anchorId);
-      const newFullAnchorMap = { ...s.fullAnchorMap };
-      if (targetNode) {
-        delete newFullAnchorMap[String(targetNode.label)];
-      }
 
       const newNodes = s.nodes.map(n => n.id === anchorId ? { ...n, isAnchor: false } : n);
-      return { ...s, nodes: interpolateColors(newNodes), fullAnchorMap: newFullAnchorMap };
+      const interpolated = interpolateColors(newNodes);
+      return { ...s, nodes: interpolated, fullAnchorMap: buildAnchorMap(interpolated) };
     }));
   };
 
   const updateAnchorColor = (scaleId: string, anchorId: string, hex: string) => {
     setScales(prev => prev.map(s => {
       if (s.id !== scaleId) return s;
-      
-      const targetNode = s.nodes.find(n => n.id === anchorId);
-      const newFullAnchorMap = { ...s.fullAnchorMap };
-      if (targetNode) {
-        newFullAnchorMap[String(targetNode.label)] = hex;
-      }
 
       const newNodes = s.nodes.map(n => n.id === anchorId ? { ...n, hex } : n);
-      return { ...s, nodes: interpolateColors(newNodes), fullAnchorMap: newFullAnchorMap };
+      const interpolated = interpolateColors(newNodes);
+      return { ...s, nodes: interpolated, fullAnchorMap: buildAnchorMap(interpolated) };
     }));
   };
 
@@ -671,7 +757,7 @@ export default function App() {
       const oklch = chroma(validHex).oklch();
       const l = oklch[0]; // 0 to 1
       
-      const maxIndex = currentScale.stepCount + 1;
+      const maxIndex = currentScale.nodes.length - 1;
       let targetIndex = Math.round((1 - l) * maxIndex);
       targetIndex = Math.max(0, Math.min(maxIndex, targetIndex));
 
@@ -705,16 +791,14 @@ export default function App() {
         }
 
         const targetNode = newNodes[targetIndex];
-        const newFullAnchorMap = { ...s.fullAnchorMap };
-        newFullAnchorMap[String(targetNode.label)] = chroma(validHex).hex();
-
         newNodes[targetIndex] = {
           ...targetNode,
           hex: chroma(validHex).hex(),
           isAnchor: true,
         };
 
-        return { ...s, nodes: interpolateColors(newNodes), fullAnchorMap: newFullAnchorMap };
+        const interpolated = interpolateColors(newNodes);
+        return { ...s, nodes: interpolated, fullAnchorMap: buildAnchorMap(interpolated) };
       }));
     }
 
@@ -739,21 +823,9 @@ export default function App() {
     setScales(prev => prev.map(s => {
       if (s.id !== scaleId) return s;
       
-      const targetNode = s.nodes.find(n => n.id === nodeId);
-      if (!targetNode) return s;
-
-      const newIsAnchor = !targetNode.isAnchor;
-      const newFullAnchorMap = { ...s.fullAnchorMap };
-      if (newIsAnchor) {
-        newFullAnchorMap[String(targetNode.label)] = targetNode.hex || '#ffffff';
-      } else {
-        delete newFullAnchorMap[String(targetNode.label)];
-      }
-
-      const newNodes = s.nodes.map(n => 
-        n.id === nodeId ? { ...n, isAnchor: newIsAnchor } : n
-      );
-      return { ...s, nodes: interpolateColors(newNodes), fullAnchorMap: newFullAnchorMap };
+      const newNodes = s.nodes.map(n => n.id === nodeId ? { ...n, isAnchor: !n.isAnchor } : n);
+      const interpolated = interpolateColors(newNodes);
+      return { ...s, nodes: interpolated, fullAnchorMap: buildAnchorMap(interpolated) };
     }));
   };
 
@@ -770,18 +842,18 @@ export default function App() {
         if (oldIndex !== -1 && newIndex !== -1) {
           let newNodes = arrayMove(s.nodes, oldIndex, newIndex);
           const draggedId = active.id;
-          const newFullAnchorMap = { ...s.fullAnchorMap };
 
+          // fullAnchorMap is rebuilt from the result afterwards (buildAnchorMap), so any
+          // anchor whose label shifts here doesn't leave a stale entry behind under its old label.
           newNodes = newNodes.map((n, i) => {
             const newLabel = getLabel(i, s.stepCount);
-            if (n.id === draggedId) {
-              newFullAnchorMap[String(newLabel)] = n.hex || '#ffffff';
-              return { ...n, index: i, label: newLabel, isAnchor: true };
-            }
-            return { ...n, index: i, label: newLabel };
+            return n.id === draggedId
+              ? { ...n, index: i, label: newLabel, isAnchor: true }
+              : { ...n, index: i, label: newLabel };
           });
 
-          return { ...s, nodes: interpolateColors(newNodes), fullAnchorMap: newFullAnchorMap };
+          const interpolated = interpolateColors(newNodes);
+          return { ...s, nodes: interpolated, fullAnchorMap: buildAnchorMap(interpolated) };
         }
         return s;
       }));
@@ -789,24 +861,23 @@ export default function App() {
   };
 
   const handleCancel = () => {
-    parent.postMessage({ pluginMessage: { type: 'CANCEL' } }, '*');
+    setIsCancelConfirmOpen(true);
   };
 
   const generateFigmaNodes = () => {
-    const allScaleNodes = scales.flatMap(scale => 
-      scale.nodes.filter(n => n.index !== 0 && n.index !== scale.stepCount + 1).map(n => ({
+    const allScaleNodes = scales.flatMap(scale =>
+      scale.nodes.filter(n => !n.locked).map(n => ({
         index: n.index,
-        label: getLabel(n.index, scale.stepCount),
-        name: `${scale.name}-${getLabel(n.index, scale.stepCount)}`,
+        label: n.label,
+        name: `${scale.name}-${n.label}`,
         rgb: chroma(n.hex || '#ffffff').rgb(true).map(v => v / 255)
       }))
     );
 
-    const allRawNodes = scales.flatMap(scale => 
-      scale.nodes.filter(n => n.index !== 0 && n.index !== scale.stepCount + 1).map(n => ({
+    const allRawNodes = scales.flatMap(scale =>
+      scale.nodes.filter(n => !n.locked).map(n => ({
         ...n,
         scaleName: scale.name,
-        label: getLabel(n.index, scale.stepCount),
         rgb: chroma(n.hex || '#ffffff').gl()
       }))
     );
@@ -832,11 +903,11 @@ export default function App() {
       return;
     }
 
-    const allRawNodes = scales.flatMap(scale => 
-      scale.nodes.filter(n => n.index !== 0 && n.index !== scale.stepCount + 1).map(n => ({
+    const allRawNodes = scales.flatMap(scale =>
+      scale.nodes.filter(n => !n.locked).map(n => ({
         ...n,
         scaleName: scale.name,
-        label: getLabel(n.index, scale.stepCount),
+        label: String(n.label) + (n.isAnchor ? '*' : ''),
         rgb: chroma(n.hex || '#ffffff').gl()
       }))
     );
@@ -860,11 +931,11 @@ export default function App() {
 
   const createStyles = (e: React.FormEvent) => {
     e.preventDefault();
-    const allRawNodes = scales.flatMap(scale => 
-      scale.nodes.filter(n => n.index !== 0 && n.index !== scale.stepCount + 1).map(n => ({
+    const allRawNodes = scales.flatMap(scale =>
+      scale.nodes.filter(n => !n.locked).map(n => ({
         ...n,
         scaleName: scale.name,
-        label: getLabel(n.index, scale.stepCount),
+        label: String(n.label) + (n.isAnchor ? '*' : ''),
         rgb: chroma(n.hex || '#ffffff').gl()
       }))
     );
@@ -882,6 +953,11 @@ export default function App() {
 
 
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [isImportDropdownOpen, setIsImportDropdownOpen] = useState(false);
+  const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
+  const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false);
+  const [importMode, setImportMode] = useState<'append' | 'replace'>('append');
+  const [isImportModeDropdownOpen, setIsImportModeDropdownOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportCollectionName, setExportCollectionName] = useState('Scaly Colors');
   const [exportGroupName, setExportGroupName] = useState('');
@@ -889,8 +965,138 @@ export default function App() {
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
   const [exportStyleGroupName, setExportStyleGroupName] = useState('');
   const [existingStyles, setExistingStyles] = useState<string[]>([]);
+  const [isImportVariableModalOpen, setIsImportVariableModalOpen] = useState(false);
+  const [isImportStyleModalOpen, setIsImportStyleModalOpen] = useState(false);
+  const [importVariablesData, setImportVariablesData] = useState<any[]>([]);
+  const [importStylesData, setImportStylesData] = useState<any[]>([]);
+  const [selectedImportVariables, setSelectedImportVariables] = useState<{ [key: string]: boolean }>({});
+  const [selectedImportStyles, setSelectedImportStyles] = useState<{ [key: string]: boolean }>({});
   const [toast, setToast] = useState<string | null>(null);
   const toastTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 5000);
+  };
+
+  const handleImportedScales = useCallback((importedScales: any[], isReplace: boolean = false) => {
+    const newScales = importedScales.map(imported => {
+      // Force stepCount to be one of the standard step counts of the plugin (9, 11, 13, 15)
+      const standardCounts = [9, 11, 13, 15];
+      let stepCount = imported.stepCount;
+      if (!standardCounts.includes(stepCount)) {
+        stepCount = 11; // Default to 11 steps
+      }
+      
+      const totalNodes = stepCount + 2;
+      const maxIndex = totalNodes - 1;
+      
+      // Initialize empty standard nodes
+      const nodes: ColorNode[] = Array.from({ length: totalNodes }).map((_, i) => {
+        const label = getLabel(i, stepCount);
+        return {
+          id: `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${i}`,
+          index: i,
+          label,
+          hex: i === 0 ? '#ffffff' : i === totalNodes - 1 ? '#000000' : null,
+          isAnchor: i === 0 || i === totalNodes - 1,
+          locked: i === 0 || i === totalNodes - 1
+        };
+      });
+
+      // Map imported colors to standard steps
+      const importedNodes = [...imported.nodes];
+      
+      importedNodes.forEach(imp => {
+        const impLabelStr = String(imp.label);
+        const impHex = imp.hex ? chroma(imp.hex).hex() : null;
+        if (!impHex) return;
+
+        // Try mapping by exact label match first
+        let targetIndex = -1;
+        for (let i = 0; i < totalNodes; i++) {
+          if (String(getLabel(i, stepCount)) === impLabelStr) {
+            targetIndex = i;
+            break;
+          }
+        }
+
+        // If no exact label match (e.g. fallback custom selection), map based on lightness
+        if (targetIndex === -1) {
+          const oklch = chroma(impHex).oklch();
+          const l = oklch[0]; // 0 to 1
+          targetIndex = Math.round((1 - l) * maxIndex);
+          targetIndex = Math.max(0, Math.min(maxIndex, targetIndex));
+        }
+
+        // Check if this node should be treated as an anchor:
+        // 1. Extreme white/black nodes (index 0 and maxIndex) are always anchors
+        // 2. For fallback selections, all imported blocks are treated as anchors
+        // 3. For structured design scales, only blocks having isAnchor === true are anchors
+        const isFallback = imported.name === "Imported Selection";
+        const shouldBeAnchor = isFallback || imp.isAnchor || targetIndex === 0 || targetIndex === maxIndex;
+
+        if (shouldBeAnchor) {
+          // Collision handling: find the nearest empty (non-anchor) step in nodes
+          if (nodes[targetIndex].isAnchor) {
+            // If it's the absolute first or last node (white/black), let's keep the custom hex if it fits
+            if (targetIndex === 0 || targetIndex === maxIndex) {
+              nodes[targetIndex].hex = impHex;
+              return;
+            }
+
+            let offset = 1;
+            let found = false;
+            while (offset <= maxIndex) {
+              if (targetIndex + offset < maxIndex && !nodes[targetIndex + offset].isAnchor) {
+                targetIndex = targetIndex + offset;
+                found = true;
+                break;
+              }
+              if (targetIndex - offset > 0 && !nodes[targetIndex - offset].isAnchor) {
+                targetIndex = targetIndex - offset;
+                found = true;
+                break;
+              }
+              offset++;
+            }
+            if (!found) return; // Scale is full, skip
+          }
+
+          // Place the color node as an anchor
+          nodes[targetIndex].hex = impHex;
+          nodes[targetIndex].isAnchor = true;
+        } else {
+          // Non-anchor color: We do NOT set isAnchor to true.
+          // By default, the interpolation will override this step's color dynamically.
+          // However, if there are NO anchors defined in the imported nodes list besides 0 and maxIndex,
+          // we can still import this color as a starting point. But here, the user explicitly wants
+          // to interpolate all non-anchor steps, so we do not mark it as anchor.
+        }
+      });
+
+      const fullAnchorMap = buildAnchorMap(nodes);
+
+      // Interpolate the missing steps
+      const interpolated = interpolateColors(nodes);
+
+      return {
+        id: `scale-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        name: imported.name,
+        stepCount,
+        nodes: interpolated,
+        fullAnchorMap
+      };
+    });
+
+    if (isReplace) {
+      setScales(newScales);
+    } else {
+      setScales(prev => [...prev, ...newScales]);
+    }
+    showToast(`Successfully imported ${newScales.length} scale(s) from design!`);
+  }, [showToast]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -901,21 +1107,173 @@ export default function App() {
         setExistingCollections(msg.collections);
       } else if (msg.type === 'STYLES_DATA') {
         setExistingStyles(msg.groups);
+      } else if (msg.type === 'IMPORTED_SCALES_DATA') {
+        handleImportedScales(msg.scales);
+      } else if (msg.type === 'VARIABLES_IMPORT_DATA') {
+        setImportVariablesData(msg.collections);
+        setImportMode('append');
+        setIsImportVariableModalOpen(true);
+        // Pre-select all scales by default
+        const initialSelections: { [key: string]: boolean } = {};
+        msg.collections.forEach((col: any) => {
+          col.groups.forEach((group: any) => {
+            group.scales.forEach((scale: any) => {
+              initialSelections[`${col.id}:${group.name}:${scale.name}`] = true;
+            });
+          });
+        });
+        setSelectedImportVariables(initialSelections);
+      } else if (msg.type === 'STYLES_IMPORT_DATA') {
+        setImportStylesData(msg.groups);
+        setImportMode('append');
+        setIsImportStyleModalOpen(true);
+        const initialSelections: { [key: string]: boolean } = {};
+        msg.groups.forEach((group: any) => {
+          group.scales.forEach((scale: any) => {
+            initialSelections[`${group.name}:${scale.name}`] = true;
+          });
+        });
+        setSelectedImportStyles(initialSelections);
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [handleImportedScales]);
 
-  const showToast = (message: string) => {
-    setToast(message);
-    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    toastTimeoutRef.current = setTimeout(() => setToast(null), 5000);
-  };
+  useEffect(() => {
+    if (!isImportDropdownOpen && !isExportDropdownOpen && !isImportModeDropdownOpen) return;
+    const handleOutsideClick = () => {
+      setIsImportDropdownOpen(false);
+      setIsExportDropdownOpen(false);
+      setIsImportModeDropdownOpen(false);
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, [isImportDropdownOpen, isExportDropdownOpen, isImportModeDropdownOpen]);
 
   const closeToast = () => {
     setToast(null);
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+  };
+
+  const toggleImportVariable = (key: string) => {
+    setSelectedImportVariables(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const toggleImportStyle = (key: string) => {
+    setSelectedImportStyles(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const toggleAllVariablesInCollection = (colId: string, value: boolean) => {
+    const updated = { ...selectedImportVariables };
+    const col = importVariablesData.find(c => c.id === colId);
+    if (col) {
+      col.groups.forEach((g: any) => {
+        g.scales.forEach((s: any) => {
+          updated[`${colId}:${g.name}:${s.name}`] = value;
+        });
+      });
+    }
+    setSelectedImportVariables(updated);
+  };
+
+  const toggleAllVariablesInGroup = (colId: string, groupName: string, value: boolean) => {
+    const updated = { ...selectedImportVariables };
+    const col = importVariablesData.find(c => c.id === colId);
+    if (col) {
+      const g = col.groups.find((gr: any) => gr.name === groupName);
+      if (g) {
+        g.scales.forEach((s: any) => {
+          updated[`${colId}:${groupName}:${s.name}`] = value;
+        });
+      }
+    }
+    setSelectedImportVariables(updated);
+  };
+
+  const toggleAllStylesInGroup = (groupName: string, value: boolean) => {
+    const updated = { ...selectedImportStyles };
+    const g = importStylesData.find(gr => gr.name === groupName);
+    if (g) {
+      g.scales.forEach((s: any) => {
+        updated[`${groupName}:${s.name}`] = value;
+      });
+    }
+    setSelectedImportStyles(updated);
+  };
+
+  const executeVariablesImport = () => {
+    const scalesToImport: any[] = [];
+    
+    importVariablesData.forEach((col: any) => {
+      col.groups.forEach((group: any) => {
+        group.scales.forEach((scale: any) => {
+          const isSelected = selectedImportVariables[`${col.id}:${group.name}:${scale.name}`];
+          if (isSelected) {
+            const mappedNodes = scale.nodes.map((n: any) => {
+              return {
+                label: n.label,
+                hex: n.hex,
+                isAnchor: !!n.isAnchor
+              };
+            });
+            
+            scalesToImport.push({
+              name: scale.name,
+              stepCount: scale.nodes.length,
+              nodes: mappedNodes
+            });
+          }
+        });
+      });
+    });
+    
+    if (scalesToImport.length === 0) {
+      showToast('Please select at least one scale to import.');
+      return;
+    }
+    
+    handleImportedScales(scalesToImport, importMode === 'replace');
+    setIsImportVariableModalOpen(false);
+  };
+
+  const executeStylesImport = () => {
+    const scalesToImport: any[] = [];
+    
+    importStylesData.forEach((group: any) => {
+      group.scales.forEach((scale: any) => {
+        const isSelected = selectedImportStyles[`${group.name}:${scale.name}`];
+        if (isSelected) {
+          const mappedNodes = scale.nodes.map((n: any) => {
+            return {
+              label: n.label,
+              hex: n.hex,
+              isAnchor: !!n.isAnchor
+            };
+          });
+          
+          scalesToImport.push({
+            name: scale.name,
+            stepCount: scale.nodes.length,
+            nodes: mappedNodes
+          });
+        }
+      });
+    });
+    
+    if (scalesToImport.length === 0) {
+      showToast('Please select at least one scale to import.');
+      return;
+    }
+    
+    handleImportedScales(scalesToImport, importMode === 'replace');
+    setIsImportStyleModalOpen(false);
   };
 
   const toggleTheme = () => {
@@ -933,17 +1291,35 @@ export default function App() {
           <path d="M71 213C71 203.676 69.1635 194.444 65.5955 185.829C62.0274 177.215 56.7976 169.388 50.2046 162.795C43.6116 156.202 35.7846 150.973 27.1705 147.405C18.5564 143.836 9.32385 142 0 142L1.15674e-05 213H71Z" fill="currentColor"/>
           <path d="M86 59C86 68.3239 87.8365 77.5564 91.4045 86.1705C94.9726 94.7846 100.202 102.612 106.795 109.205C113.388 115.798 121.215 121.027 129.829 124.595C138.444 128.164 147.676 130 157 130V59L86 59Z" fill="currentColor"/>
           </svg>
-          <div className={`flex flex-col pl-2 ${theme === 'light' ? 'text-black/90' : 'text-white/90'}`}>
-            <h1 className="text-md font-semibold">Color Scale Generator</h1>
-            <p className={`text-md ${theme === 'light' ? 'text-black/40' : 'text-white/40'} text-xs font-semibold`}>Build by Cakhogung</p>
+          <div className="flex flex-col pl-2">
+            <p className={`text-xs font-semibold mb-1 ${theme === 'light' ? 'text-black/40' : 'text-white/40'}`}>
+              Scale Generator - by Cakhogung
+            </p>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setActiveTab('color')}
+                className={`text-2xl font-medium transition-all ${activeTab === 'color' ? (theme === 'light' ? 'text-slate-900' : 'text-white') : (theme === 'light' ? 'text-slate-300 hover:text-slate-400' : 'text-slate-600 hover:text-slate-500')}`}
+              >
+                Color
+              </button>
+              <button 
+                onClick={() => setActiveTab('typo')}
+                className={`text-2xl font-medium transition-all ${activeTab === 'typo' ? (theme === 'light' ? 'text-slate-900' : 'text-white') : (theme === 'light' ? 'text-slate-300 hover:text-slate-400' : 'text-slate-600 hover:text-slate-500')}`}
+              >
+                Typography
+              </button>
             </div>
+          </div>
         </div>
-        <button
-          onClick={handleCancel}
-          className={`text-sm font-semibold px-4 py-1.5 rounded-full transition-all ${theme === 'light' ? 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-900' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
-        >
-          Cancel
-        </button>
+        
+        <div className="flex items-center gap-2 pr-2">
+          <button
+            onClick={handleCancel}
+            className={`text-sm font-semibold px-4 py-1.5 rounded-full transition-all ${theme === 'light' ? 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-900' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+          >
+            Cancel
+          </button>
+        </div>
       </div>
       {/* Toast Notification */}
       {toast && (
@@ -954,6 +1330,8 @@ export default function App() {
         />
         )}
 
+      {activeTab === 'color' && (
+        <>
       {scales.map((scale, scaleIdx) => (
         <div key={scale.id} className={`flex flex-col p-5 rounded-[2rem] backdrop-blur-2xl border transition-colors duration-300 ${theme === 'light' ? 'bg-white/40 border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-white/[0.02] border-white/5 shadow-2xl'} ${scaleIdx > 0 ? 'mt-6' : ''}`}>
           <div className="flex justify-between items-center mb-5">
@@ -1033,8 +1411,8 @@ export default function App() {
           </div>
           
           <div className="mb-6 flex flex-wrap gap-2 items-center">
-            {scale.nodes.filter(n => n.isAnchor && n.index !== 0 && n.index !== scale.stepCount + 1).map(anchor => (
-              <AnchorColorItem 
+            {scale.nodes.filter(n => n.isAnchor && !n.locked).map(anchor => (
+              <AnchorColorItem
                 key={anchor.id}
                 anchor={anchor}
                 theme={theme}
@@ -1048,7 +1426,7 @@ export default function App() {
                 }}
               />
             ))}
-            {scale.nodes.filter(n => n.isAnchor && n.index !== 0 && n.index !== scale.stepCount + 1).length < scale.stepCount && (
+            {scale.nodes.filter(n => n.isAnchor && !n.locked).length < scale.stepCount && (
               <button 
                 onClick={() => { 
                   setHexInput('#f20d0d'); 
@@ -1069,16 +1447,15 @@ export default function App() {
               onDragEnd={(e) => handleDragEnd(scale.id, e)}
             >
               <div className="flex w-full gap-2">
-                <SortableContext 
-                  items={scale.nodes.filter(n => n.index !== 0 && n.index !== scale.stepCount + 1).map(n => n.id)}
+                <SortableContext
+                  items={scale.nodes.filter(n => !n.locked).map(n => n.id)}
                   strategy={horizontalListSortingStrategy}
                 >
-                  {scale.nodes.filter(n => n.index !== 0 && n.index !== scale.stepCount + 1).map(node => (
-                    <SortableColorNode 
-                      key={node.id} 
-                      node={node} 
-                      stepCount={scale.stepCount} 
-                      theme={theme} 
+                  {scale.nodes.filter(n => !n.locked).map(node => (
+                    <SortableColorNode
+                      key={node.id}
+                      node={node}
+                      theme={theme}
                       onToggleAnchor={() => toggleAnchor(scale.id, node.id)}
                       onShowToast={showToast}
                     />
@@ -1091,13 +1468,69 @@ export default function App() {
               <div 
                 className="w-full h-full"
                 style={{
-                  background: `linear-gradient(to right, ${scale.nodes.filter(n => n.index !== 0 && n.index !== scale.stepCount + 1).map(n => n.hex).join(', ')})`
+                  background: `linear-gradient(to right, ${scale.nodes.filter(n => !n.locked).map(n => n.hex).join(', ')})`
                 }}
               />
             </div>
           </div>
         </div>
       ))}
+
+      {isCancelConfirmOpen && (
+        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className={`rounded-3xl shadow-2xl p-6 w-full max-w-sm backdrop-blur-3xl border transition-colors ${theme === 'light' ? 'bg-white border-slate-200 shadow-slate-300/50' : 'bg-[#111111]/90 border-white/10 shadow-black/50'}`}>
+            <h2 className={`text-lg font-bold mb-2 ${theme === 'light' ? 'text-slate-800' : 'text-white'}`}>
+              Close Scaly?
+            </h2>
+            <p className={`text-sm mb-6 font-medium ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+              You have unsaved changes. Would you like to draw your color scales onto the canvas before closing?
+            </p>
+            <div className="flex flex-col gap-2.5">
+              <button
+                onClick={() => {
+                  generateFigmaNodes();
+                  setTimeout(() => {
+                    parent.postMessage({ pluginMessage: { type: 'CANCEL' } }, '*');
+                  }, 100);
+                }}
+                className="w-full font-bold text-sm py-2.5 rounded-xl transition-all bg-black text-white hover:bg-slate-800 dark:bg-white dark:text-black dark:hover:bg-slate-100 flex items-center justify-center gap-1.5"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+                <span>Draw & Close</span>
+              </button>
+              
+              <button
+                onClick={() => {
+                  parent.postMessage({ pluginMessage: { type: 'CANCEL' } }, '*');
+                }}
+                className={`w-full font-bold text-sm py-2.5 rounded-xl transition-all border flex items-center justify-center gap-1.5 ${
+                  theme === 'light' 
+                    ? 'border-red-200 text-red-600 hover:bg-red-50 bg-white' 
+                    : 'border-red-500/20 text-red-400 hover:bg-red-500/10 bg-transparent'
+                }`}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6" />
+                </svg>
+                <span>Discard & Close</span>
+              </button>
+              
+              <button
+                onClick={() => setIsCancelConfirmOpen(false)}
+                className={`w-full font-bold text-sm py-2.5 rounded-xl transition-all ${
+                  theme === 'light' 
+                    ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' 
+                    : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                }`}
+              >
+                Keep Editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isExportModalOpen && (
         <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
@@ -1290,6 +1723,342 @@ export default function App() {
         </div>
       )}
 
+      {isImportVariableModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className={`rounded-3xl shadow-2xl p-6 w-full max-w-lg backdrop-blur-3xl border flex flex-col max-h-[85vh] transition-colors ${theme === 'light' ? 'bg-white border-white/60 shadow-slate-300/50' : 'bg-[#111111]/90 border-white/10 shadow-black/50'}`}>
+            <h2 className={`text-lg font-bold ${theme === 'light' ? 'text-slate-800' : 'text-white'}`}>
+              Import from Variables
+            </h2>
+            <p className={`text-xs mt-1 ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+              Select which color scales you want to import. Steps ending with '*' will be treated as anchors, and other steps will be interpolated.
+            </p>
+
+            <div className="flex-1 overflow-y-auto pr-1 my-4 space-y-4 max-h-[50vh] no-scrollbar">
+              {importVariablesData.map(col => {
+                const allInColSelected = col.groups.every((g: any) => g.scales.every((s: any) => selectedImportVariables[`${col.id}:${g.name}:${s.name}`]));
+                const someInColSelected = col.groups.some((g: any) => g.scales.some((s: any) => selectedImportVariables[`${col.id}:${g.name}:${s.name}`]));
+                return (
+                  <div key={col.id} className={`p-4 rounded-2xl border ${theme === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'}`}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <CustomCheckbox
+                        checked={allInColSelected}
+                        indeterminate={someInColSelected && !allInColSelected}
+                        onChange={(val) => toggleAllVariablesInCollection(col.id, val)}
+                        theme={theme}
+                      />
+                      <span className={`text-sm font-bold ${theme === 'light' ? 'text-slate-800' : 'text-white'}`}>
+                        {col.name}
+                      </span>
+                    </div>
+                    
+                    <div className="pl-6 space-y-3">
+                       {col.groups.map((group: any) => {
+                        const allInGroupSelected = group.scales.every((s: any) => selectedImportVariables[`${col.id}:${group.name}:${s.name}`]);
+                        const someInGroupSelected = group.scales.some((s: any) => selectedImportVariables[`${col.id}:${group.name}:${s.name}`]);
+                        const isDefaultGroup = group.name === 'Default Group';
+                        return (
+                          <div key={group.name} className="space-y-2">
+                            {!isDefaultGroup && (
+                              <div className="flex items-center gap-2">
+                                <CustomCheckbox
+                                  checked={allInGroupSelected}
+                                  indeterminate={someInGroupSelected && !allInGroupSelected}
+                                  onChange={(val) => toggleAllVariablesInGroup(col.id, group.name, val)}
+                                  theme={theme}
+                                  size="sm"
+                                />
+                                <span className={`text-xs font-semibold uppercase tracking-wider ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                                  {group.name}
+                                </span>
+                              </div>
+                            )}
+                            
+                            <div className={`${isDefaultGroup ? '' : 'pl-6'} space-y-2`}>
+                              {group.scales.map((scale: any) => {
+                                const key = `${col.id}:${group.name}:${scale.name}`;
+                                const isChecked = !!selectedImportVariables[key];
+                                return (
+                                  <div 
+                                    key={scale.name} 
+                                    onClick={() => toggleImportVariable(key)}
+                                    className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all ${
+                                      isChecked 
+                                        ? (theme === 'light' ? 'bg-blue-50/50 hover:bg-blue-50' : 'bg-blue-500/10 hover:bg-blue-500/15')
+                                        : (theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/5')
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <CustomCheckbox
+                                        checked={isChecked}
+                                        onChange={() => toggleImportVariable(key)}
+                                        theme={theme}
+                                        size="sm"
+                                      />
+                                      <span className={`text-xs font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
+                                        {scale.name}
+                                      </span>
+                                    </div>
+                                    <div className="flex gap-0.5 items-center">
+                                      {scale.nodes.map((node: any, idx: number) => (
+                                        <div 
+                                          key={idx} 
+                                          className="w-2.5 h-2.5 rounded-full border border-black/10" 
+                                          style={{ backgroundColor: node.hex }} 
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100 dark:border-white/5">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsImportModeDropdownOpen(prev => !prev);
+                  }}
+                  className={`text-xs font-bold px-4 py-2 rounded-full border transition-all flex items-center gap-1.5 ${
+                    theme === 'light' 
+                      ? 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-800' 
+                      : 'bg-white/5 border-white/10 hover:bg-white/10 text-white'
+                  }`}
+                >
+                  <span>{importMode === 'append' ? 'Append' : 'Replace'}</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`opacity-80 transition-transform ${isImportModeDropdownOpen ? 'rotate-180' : ''}`}>
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+
+                {isImportModeDropdownOpen && (
+                  <div className={`absolute top-full mt-2 left-0 backdrop-blur-2xl border p-1.5 shadow-2xl rounded-2xl flex flex-col gap-1 w-[160px] z-[60] animate-in fade-in slide-in-from-top-2 duration-150 ${
+                    theme === 'light' 
+                      ? 'bg-white/95 border-slate-200 shadow-slate-200/50 text-slate-800' 
+                      : 'bg-[#181818]/95 border-white/10 shadow-black/80 text-white'
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportMode('append');
+                        setIsImportModeDropdownOpen(false);
+                      }}
+                      className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-xl text-left transition-colors ${
+                        importMode === 'append'
+                          ? (theme === 'light' ? 'bg-slate-100 font-bold' : 'bg-white/10 font-bold')
+                          : (theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/5')
+                      }`}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 ${importMode === 'append' ? 'opacity-100' : 'opacity-0'}`}>
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span>Append</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportMode('replace');
+                        setIsImportModeDropdownOpen(false);
+                      }}
+                      className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-xl text-left transition-colors ${
+                        importMode === 'replace'
+                          ? (theme === 'light' ? 'bg-slate-100 font-bold' : 'bg-white/10 font-bold')
+                          : (theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/5')
+                      }`}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 ${importMode === 'replace' ? 'opacity-100' : 'opacity-0'}`}>
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span>Replace</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  type="button"
+                  onClick={() => setIsImportVariableModalOpen(false)}
+                  className={`px-4 py-2 text-sm rounded-full font-regular transition-colors ${theme === 'light' ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-300 hover:bg-[#0A0A17]'}`}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button"
+                  onClick={executeVariablesImport}
+                  className={`text-sm px-5 py-2 rounded-full font-bold shadow-md transition-all ${theme === 'light' ? 'bg-gray-900 hover:bg-black text-white' : 'bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white'}`}
+                >
+                  Import Selected
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isImportStyleModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className={`rounded-3xl shadow-2xl p-6 w-full max-w-lg backdrop-blur-3xl border flex flex-col max-h-[85vh] transition-colors ${theme === 'light' ? 'bg-white border-white/60 shadow-slate-300/50' : 'bg-[#111111]/90 border-white/10 shadow-black/50'}`}>
+            <h2 className={`text-lg font-bold ${theme === 'light' ? 'text-slate-800' : 'text-white'}`}>
+              Import from Styles
+            </h2>
+            <p className={`text-xs mt-1 ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+              Select which color styles you want to import. Steps ending with '*' will be treated as anchors, and other steps will be interpolated.
+            </p>
+
+            <div className="flex-1 overflow-y-auto pr-1 my-4 space-y-4 max-h-[50vh] no-scrollbar">
+              {importStylesData.map(group => {
+                const allInGroupSelected = group.scales.every((s: any) => selectedImportStyles[`${group.name}:${s.name}`]);
+                const someInGroupSelected = group.scales.some((s: any) => selectedImportStyles[`${group.name}:${s.name}`]);
+                return (
+                  <div key={group.name} className={`p-4 rounded-2xl border ${theme === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'}`}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <CustomCheckbox
+                        checked={allInGroupSelected}
+                        indeterminate={someInGroupSelected && !allInGroupSelected}
+                        onChange={(val) => toggleAllStylesInGroup(group.name, val)}
+                        theme={theme}
+                      />
+                      <span className={`text-sm font-bold ${theme === 'light' ? 'text-slate-800' : 'text-white'}`}>
+                        {group.name === 'Default Group' ? 'Global Styles' : group.name}
+                      </span>
+                    </div>
+                    
+                    <div className="pl-6 space-y-2">
+                      {group.scales.map((scale: any) => {
+                        const key = `${group.name}:${scale.name}`;
+                        const isChecked = !!selectedImportStyles[key];
+                        return (
+                          <div 
+                            key={scale.name} 
+                            onClick={() => toggleImportStyle(key)}
+                            className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all ${
+                              isChecked 
+                                ? (theme === 'light' ? 'bg-blue-50/50 hover:bg-blue-50' : 'bg-blue-500/10 hover:bg-blue-500/15')
+                                : (theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/5')
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <CustomCheckbox
+                                checked={isChecked}
+                                onChange={() => toggleImportStyle(key)}
+                                theme={theme}
+                                size="sm"
+                              />
+                              <span className={`text-xs font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
+                                {scale.name}
+                              </span>
+                            </div>
+                            <div className="flex gap-0.5 items-center">
+                              {scale.nodes.map((node: any, idx: number) => (
+                                <div 
+                                  key={idx} 
+                                  className="w-2.5 h-2.5 rounded-full border border-black/10" 
+                                  style={{ backgroundColor: node.hex }} 
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100 dark:border-white/5">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsImportModeDropdownOpen(prev => !prev);
+                  }}
+                  className={`text-xs font-bold px-4 py-2 rounded-full border transition-all flex items-center gap-1.5 ${
+                    theme === 'light' 
+                      ? 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-800' 
+                      : 'bg-white/5 border-white/10 hover:bg-white/10 text-white'
+                  }`}
+                >
+                  <span>{importMode === 'append' ? 'Append' : 'Replace'}</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`opacity-80 transition-transform ${isImportModeDropdownOpen ? 'rotate-180' : ''}`}>
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+
+                {isImportModeDropdownOpen && (
+                  <div className={`absolute top-full mt-2 left-0 backdrop-blur-2xl border p-1.5 shadow-2xl rounded-2xl flex flex-col gap-1 w-[160px] z-[60] animate-in fade-in slide-in-from-top-2 duration-150 ${
+                    theme === 'light' 
+                      ? 'bg-white/95 border-slate-200 shadow-slate-200/50 text-slate-800' 
+                      : 'bg-[#181818]/95 border-white/10 shadow-black/80 text-white'
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportMode('append');
+                        setIsImportModeDropdownOpen(false);
+                      }}
+                      className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-xl text-left transition-colors ${
+                        importMode === 'append'
+                          ? (theme === 'light' ? 'bg-slate-100 font-bold' : 'bg-white/10 font-bold')
+                          : (theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/5')
+                      }`}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 ${importMode === 'append' ? 'opacity-100' : 'opacity-0'}`}>
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span>Append</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportMode('replace');
+                        setIsImportModeDropdownOpen(false);
+                      }}
+                      className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-xl text-left transition-colors ${
+                        importMode === 'replace'
+                          ? (theme === 'light' ? 'bg-slate-100 font-bold' : 'bg-white/10 font-bold')
+                          : (theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/5')
+                      }`}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 ${importMode === 'replace' ? 'opacity-100' : 'opacity-0'}`}>
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span>Replace</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  type="button"
+                  onClick={() => setIsImportStyleModalOpen(false)}
+                  className={`px-4 py-2 text-sm rounded-full font-regular transition-colors ${theme === 'light' ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-300 hover:bg-[#0A0A17]'}`}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button"
+                  onClick={executeStylesImport}
+                  className={`text-sm px-5 py-2 rounded-full font-bold shadow-md transition-all ${theme === 'light' ? 'bg-gray-900 hover:bg-black text-white' : 'bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white'}`}
+                >
+                  Import Selected
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
           <div className={`rounded-3xl shadow-2xl p-6 w-full max-w-sm backdrop-blur-3xl border transition-colors ${theme === 'light' ? 'bg-white border-white/60 shadow-slate-300/50' : 'bg-[#111111]/90 border-white/10 shadow-black/50'}`}>
@@ -1319,6 +2088,14 @@ export default function App() {
           </div>
         </div>
       )}
+        </>
+      )}
+
+      {activeTab === 'typo' && (
+        <div className="flex flex-col items-center justify-center h-full opacity-50 mt-20">
+          <p className="text-xl font-bold">Typography Scale (Coming Soon)</p>
+        </div>
+      )}
 
       {/* Bottom Gradient Overlay with Glassmorphic Gradient Blur */}
       <div 
@@ -1334,6 +2111,8 @@ export default function App() {
       />
 
       <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-2xl border transition-colors duration-300 ${theme === 'light' ? 'bg-white/80 border-white/60 shadow-xl shadow-slate-200/50' : 'bg-[#111111]/80 border-white/10 shadow-2xl shadow-black/80'} rounded-full p-2 flex gap-3 items-center z-40`}>
+        {activeTab === 'color' && (
+        <>
         <div className="flex gap-2 items-center">
           <button
             onClick={addScale}
@@ -1343,28 +2122,150 @@ export default function App() {
             <Plus className="w-5 h-5" />
           </button>
           <div className={`w-[1px] h-6 mx-1 ${theme === 'light' ? 'bg-slate-200' : 'bg-white/10'}`}></div>
-          <button
-            onClick={generateFigmaNodes}
-            className={`font-bold w-[96px] text-sm py-2 rounded-full transition-all ${theme === 'light' ? 'bg-black/5 hover:bg-black text-black hover:text-white' : 'bg-white/5 hover:bg-white/10 text-white'}`}
-          >
-            + Draw
-          </button>
-          <button
-            onClick={handleExportStylesClick}
-            className={`font-bold w-[96px] text-sm py-2 rounded-full transition-all ${theme === 'light' ? 'bg-black/5 hover:bg-black text-black hover:text-white' : 'bg-white/5 hover:bg-white/10 text-white'}`}
-          >
-            + Styles
-          </button>
-          <button
-            onClick={handleExportClick}
-            className={`font-bold w-[96px] text-sm py-2 rounded-full transition-all ${theme === 'light' ? 'bg-black/5 hover:bg-black text-black hover:text-white' : 'bg-white/5 hover:bg-white/10 text-white'}`}
-          >
-            + Variables
-          </button>
+          
+          {/* Import Dropdown Button */}
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsImportDropdownOpen(prev => !prev);
+                setIsExportDropdownOpen(false);
+              }}
+              className={`font-bold w-[104px] text-sm py-2 rounded-full transition-all flex items-center justify-center gap-1.5 ${
+                isImportDropdownOpen
+                  ? (theme === 'light' ? 'bg-black text-white' : 'bg-white text-black')
+                  : (theme === 'light' ? 'bg-black/5 hover:bg-black text-black hover:text-white' : 'bg-white/5 hover:bg-white/10 text-white')
+              }`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-90">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>Import</span>
+            </button>
+            
+            {/* Import Dropdown Menu */}
+            {isImportDropdownOpen && (
+              <div className={`absolute bottom-full mb-3 left-1/2 -translate-x-1/2 backdrop-blur-2xl border p-1.5 shadow-2xl rounded-2xl flex flex-col gap-1 w-[160px] z-50 ${theme === 'light' ? 'bg-white/95 border-slate-200 shadow-slate-200/50 text-slate-800' : 'bg-[#181818]/95 border-white/10 shadow-black/80 text-white'}`}>
+                <button
+                  onClick={() => {
+                    setIsImportDropdownOpen(false);
+                    parent.postMessage({ pluginMessage: { type: 'IMPORT_FROM_DESIGN' } }, '*');
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="9" cy="9" r="2"/>
+                    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                  </svg>
+                  <span>From Design</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsImportDropdownOpen(false);
+                    parent.postMessage({ pluginMessage: { type: 'GET_VARIABLES_FOR_IMPORT' } }, '*');
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                    <line x1="12" y1="22.08" x2="12" y2="12"/>
+                  </svg>
+                  <span>From Variable</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsImportDropdownOpen(false);
+                    parent.postMessage({ pluginMessage: { type: 'GET_STYLES_FOR_IMPORT' } }, '*');
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                    <path d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>
+                  </svg>
+                  <span>From Style</span>
+                </button>
+              </div>
+            )}
+          </div>
 
-
+          {/* Export Dropdown Button */}
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExportDropdownOpen(prev => !prev);
+                setIsImportDropdownOpen(false);
+              }}
+              className={`font-bold w-[104px] text-sm py-2 rounded-full transition-all flex items-center justify-center gap-1.5 ${
+                isExportDropdownOpen
+                  ? (theme === 'light' ? 'bg-black text-white' : 'bg-white text-black')
+                  : (theme === 'light' ? 'bg-black/5 hover:bg-black text-black hover:text-white' : 'bg-white/5 hover:bg-white/10 text-white')
+              }`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-90">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <span>Export</span>
+            </button>
+            
+            {/* Export Dropdown Menu */}
+            {isExportDropdownOpen && (
+              <div className={`absolute bottom-full mb-3 left-1/2 -translate-x-1/2 backdrop-blur-2xl border p-1.5 shadow-2xl rounded-2xl flex flex-col gap-1 w-[160px] z-50 ${theme === 'light' ? 'bg-white/95 border-slate-200 shadow-slate-200/50 text-slate-800' : 'bg-[#181818]/95 border-white/10 shadow-black/80 text-white'}`}>
+                <button
+                  onClick={() => {
+                    setIsExportDropdownOpen(false);
+                    generateFigmaNodes();
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="9" cy="9" r="2"/>
+                    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                  </svg>
+                  <span>To Design</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsExportDropdownOpen(false);
+                    handleExportClick();
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                    <line x1="12" y1="22.08" x2="12" y2="12"/>
+                  </svg>
+                  <span>To Variable</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsExportDropdownOpen(false);
+                    handleExportStylesClick();
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                    <path d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>
+                  </svg>
+                  <span>To Style</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         <div className={`w-[1px] h-6 ${theme === 'light' ? 'bg-slate-200' : 'bg-white/10'}`}></div>
+        </>
+        )}
         <button 
           onClick={toggleTheme}
           className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${theme === 'light' ? 'text-slate-500 hover:bg-black hover:text-white' : 'text-slate-400 hover:bg-white hover:text-black'}`}
