@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import type { Theme } from './types';
 import { ChevronDown } from './icons';
 
@@ -117,6 +118,158 @@ export const Dropdown: React.FC<DropdownProps> = ({
           })}
           {footer}
         </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Searchable font combobox: the trigger doubles as a text input — click to type
+ * and filter, ↑/↓ to move, Enter to pick, Esc to close. Normal font-select UX.
+ * Reuses the solid menu surface. Options are font-family names.
+ */
+export const FontPicker: React.FC<{
+  theme: Theme;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  widthClass?: string;
+  menuWidthClass?: string;
+}> = ({ theme, value, options, onChange, widthClass, menuWidthClass = 'w-[240px]' }) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [hi, setHi] = useState(0);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? options.filter(o => o.toLowerCase().includes(q)) : options;
+  }, [options, query]);
+
+  // Calculate fixed position from trigger bounding rect.
+  // Auto-flip: if menu would overflow the right edge of the viewport, align
+  // its right edge to the trigger's right edge instead.
+  const updatePos = useCallback(() => {
+    if (!ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    // Parse pixel width from class like "w-[240px]" → 240
+    const match = menuWidthClass.match(/w-\[(\d+)px\]/);
+    const menuW = match ? parseInt(match[1], 10) : 240;
+    const viewportW = window.innerWidth;
+    const wouldOverflow = r.left + menuW > viewportW - 8;
+    const left = wouldOverflow ? Math.max(8, r.right - menuW) : r.left;
+    setMenuPos({ top: r.bottom + 8, left });
+  }, [menuWidthClass]);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery('');
+    const idx = Math.max(0, options.indexOf(value));
+    setHi(idx);
+    updatePos();
+    const t = setTimeout(() => inputRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [open, options, value, updatePos]);
+
+  // Close on outside click; also update position on scroll/resize
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (
+        ref.current && !ref.current.contains(e.target as Node) &&
+        listRef.current && !listRef.current.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    const onScroll = () => { updatePos(); };
+    document.addEventListener('mousedown', onDoc);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [open, updatePos]);
+
+  // keep the highlighted row scrolled into view
+  useEffect(() => {
+    if (!open) return;
+    listRef.current?.querySelector<HTMLElement>(`[data-idx="${hi}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [hi, open]);
+
+  const pick = (v: string) => { onChange(v); setOpen(false); };
+
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(filtered.length - 1, h + 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(0, h - 1)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[hi]) pick(filtered[hi]); }
+    else if (e.key === 'Escape') { e.preventDefault(); setOpen(false); }
+  };
+
+  const valueTextCls = cx(
+    'flex-1 min-w-0 text-left overflow-hidden text-ellipsis whitespace-nowrap font-inter font-medium text-[18px] leading-[32px] tracking-[0.2px]',
+    theme === 'light' ? 'text-[#131e36]' : 'text-white',
+  );
+  const chevron = (
+    <span className={cx('shrink-0 w-5 h-5 flex items-center justify-center', theme === 'light' ? 'text-slate-500' : 'text-white/60')}>
+      <ChevronDown size={16} strokeWidth={2.2} />
+    </span>
+  );
+
+  return (
+    <div ref={ref} className={cx('relative', widthClass)}>
+      {open ? (
+        <div className="flex items-center gap-2.5 px-1">
+          <input
+            ref={inputRef}
+            value={query}
+            placeholder={value}
+            onChange={e => { setQuery(e.target.value); setHi(0); }}
+            onKeyDown={onKey}
+            className={cx('flex-1 min-w-0 bg-transparent outline-none font-inter font-medium text-[18px] leading-[32px] tracking-[0.2px]',
+              theme === 'light' ? 'text-[#131e36] placeholder:text-slate-400' : 'text-white placeholder:text-white/40')}
+          />
+          {chevron}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-2.5 w-full px-1 opacity-60 hover:opacity-100 transition-opacity duration-150"
+        >
+          <span className={valueTextCls}>{value}</span>
+          {chevron}
+        </button>
+      )}
+
+      {open && createPortal(
+        <div
+          ref={listRef}
+          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
+          className={cx('max-h-[304px] overflow-y-auto no-scrollbar flex flex-col gap-0.5', menuWidthClass, menuSurface(theme))}
+        >
+          {filtered.length === 0 ? (
+            <div className={cx('px-3 py-2 text-[13px] font-semibold', theme === 'light' ? 'text-slate-400' : 'text-white/40')}>No font found</div>
+          ) : filtered.map((o, i) => (
+            <button
+              key={o}
+              type="button"
+              data-idx={i}
+              onMouseEnter={() => setHi(i)}
+              onMouseDown={e => { e.preventDefault(); pick(o); }}
+              className={menuItemClass(theme, { active: i === hi })}
+            >
+              <span className="flex-1 min-w-0 truncate">{o}</span>
+              {o === value && (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70"><path d="M20 6 9 17l-5-5" /></svg>
+              )}
+            </button>
+          ))}
+        </div>,
+        document.body,
       )}
     </div>
   );

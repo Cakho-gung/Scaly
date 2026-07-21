@@ -61,9 +61,11 @@ export function buildGeneratedRungs(stepsUp: number, stepsDown: number): TypoRun
 }
 
 /** Default Font Style categories (§10). */
+// Variants are stored "bare" (numbers for numbered, sizes for sized); the full
+// token label is composed as `${category.name}-${variant}` in the UI/export.
 export const DEFAULT_CATEGORIES: TypoCategory[] = [
-  { id: uid('c'), name: 'Display', kind: 'numbered', variants: ['Display-1', 'Display-2', 'Display-3'] },
-  { id: uid('c'), name: 'Heading', kind: 'numbered', variants: ['Heading-1', 'Heading-2', 'Heading-3', 'Heading-4', 'Heading-5', 'Heading-6'] },
+  { id: uid('c'), name: 'Display', kind: 'numbered', variants: ['1', '2', '3'] },
+  { id: uid('c'), name: 'Heading', kind: 'numbered', variants: ['1', '2', '3', '4', '5', '6'] },
   { id: uid('c'), name: 'Title', kind: 'sized', variants: ['XL', 'L', 'M', 'S', 'XS'] },
   { id: uid('c'), name: 'Body', kind: 'sized', variants: ['XL', 'L', 'M', 'S', 'XS'] },
   { id: uid('c'), name: 'Button', kind: 'sized', variants: ['XL', 'L', 'M', 'S', 'XS'] },

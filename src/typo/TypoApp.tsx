@@ -1,11 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { ModeConfig, Theme, TypoMode, TypoStage } from './types';
 import {
   DEFAULT_MODE_CONFIG, MOCK_FONTS, MODE_ORDER, PREVIEW_TEXT,
   buildGeneratedRungs, fmtSize, orderedRungs, rungSize,
 } from './logic';
-import { cx, Counter, Dropdown, EditableField, FieldLabel, RoundingButton } from './ui';
+import { cx, Counter, Dropdown, EditableField, FieldLabel, FontPicker, RoundingButton } from './ui';
 import { Monitor, Tablet, Smartphone, Moon, Sun } from './icons';
+import MappingStage from './MappingStage';
 
 interface TypoAppProps {
   theme: Theme;
@@ -44,6 +45,19 @@ export default function TypoApp({ theme, toggleTheme, onCancel, showToast }: Typ
   const [stepsDown, setStepsDown] = useState(3);
   const [round, setRound] = useState(0);   // 0 = whole number, 1/2/3 = decimals
   const [previewFont, setPreviewFont] = useState('IBM Plex Mono');
+  const [fonts, setFonts] = useState<string[]>(MOCK_FONTS);
+
+  // Ask the Figma backend for the real installed font families (system + added).
+  // Falls back to MOCK_FONTS when running outside Figma (e.g. the dev preview).
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const m = e.data?.pluginMessage;
+      if (m?.type === 'FONTS_LIST' && Array.isArray(m.fonts) && m.fonts.length) setFonts(m.fonts);
+    };
+    window.addEventListener('message', onMsg);
+    parent.postMessage({ pluginMessage: { type: 'GET_FONTS' } }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
 
   const rungs = useMemo(() => buildGeneratedRungs(stepsUp, stepsDown), [stepsUp, stepsDown]);
   const ordered = useMemo(() => orderedRungs(rungs, cfg, round), [rungs, cfg, round]);
@@ -67,6 +81,7 @@ export default function TypoApp({ theme, toggleTheme, onCancel, showToast }: Typ
             stepsDown={stepsDown}
             round={round}
             previewFont={previewFont}
+            fonts={fonts}
             ordered={ordered}
             cardCls={card}
             onFont={setPreviewFont}
@@ -79,9 +94,14 @@ export default function TypoApp({ theme, toggleTheme, onCancel, showToast }: Typ
         )}
 
         {stage === 'mapping' && (
-          <div className={cx('rounded-[24px] border p-6 backdrop-blur-[20px]', card)}>
-            <p className="font-inter text-sm opacity-60">Stage 2 · Mapping — coming next (Phase 3–4).</p>
-          </div>
+          <MappingStage
+            theme={theme}
+            fonts={fonts}
+            primaryFamily={previewFont}
+            onPrimaryChange={setPreviewFont}
+            cardCls=""
+            isMapped={(vid) => rungs.some(r => r.tokens.some(t => t.variantId === vid))}
+          />
         )}
       </div>
 
@@ -108,6 +128,7 @@ interface GeneratorStageProps {
   stepsDown: number;
   round: number;
   previewFont: string;
+  fonts: string[];
   ordered: ReturnType<typeof orderedRungs>;
   cardCls: string;
   onFont: (v: string) => void;
@@ -119,7 +140,7 @@ interface GeneratorStageProps {
 }
 
 const GeneratorStage: React.FC<GeneratorStageProps> = ({
-  theme, cfg, mode, stepsUp, stepsDown, round, previewFont, ordered, cardCls,
+  theme, cfg, mode, stepsUp, stepsDown, round, previewFont, fonts, ordered, cardCls,
   onFont, onBase, onRatio, onStepsUp, onStepsDown, onRound,
 }) => {
   const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -141,7 +162,7 @@ const GeneratorStage: React.FC<GeneratorStageProps> = ({
           {/* Font Family */}
           <div className="flex flex-col gap-1 w-[200px] shrink-0">
             <FieldLabel theme={theme} className="px-1">Font Family</FieldLabel>
-            <Dropdown theme={theme} value={previewFont} options={MOCK_FONTS} onChange={onFont} widthClass="max-w-[180px]" />
+            <FontPicker theme={theme} value={previewFont} options={fonts} onChange={onFont} widthClass="max-w-[184px]" menuWidthClass="w-[220px]" />
           </div>
 
           {/* Base size — editable (↑/↓ ±1, Shift+↑/↓ ±10) */}
@@ -273,10 +294,10 @@ const BottomBar: React.FC<BottomBarProps> = ({ theme, stage, mode, onMode, onSta
 
       {/* Middle group */}
       {stage === 'generator' ? (
-        <button className={pill} onClick={() => onStage('mapping')}>Mapping</button>
+        <button className={pill} onClick={() => onStage('mapping')}>Mapping →</button>
       ) : (
         <div className="flex gap-2 items-center">
-          <button className={pill} onClick={() => onStage('generator')}>Scale generator</button>
+          <button className={pill} onClick={() => onStage('generator')}>← Scale</button>
           <button className={pill} onClick={() => showToast('Export — coming in Phase 6')}>Export</button>
         </div>
       )}

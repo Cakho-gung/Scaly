@@ -586,6 +586,20 @@ figma.ui.onmessage = async (msg) => {
     })();
   }
 
+  if (msg.type === 'GET_FONTS') {
+    (async () => {
+      try {
+        const available = await figma.listAvailableFontsAsync();
+        // De-dupe to font families (each family has many styles/weights) and sort A→Z.
+        const families = Array.from(new Set(available.map(f => f.fontName.family)))
+          .sort((a, b) => a.localeCompare(b));
+        figma.ui.postMessage({ type: 'FONTS_LIST', fonts: families });
+      } catch (e: any) {
+        figma.notify(`❌ Error listing fonts: ${e.message}`);
+      }
+    })();
+  }
+
   if (msg.type === 'cancel' || msg.type === 'CANCEL') {
     figma.closePlugin();
   }
