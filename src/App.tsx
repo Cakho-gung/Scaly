@@ -18,6 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Anchor, RotateCcw, Check, Pencil, Trash2, Plus, X, Moon, Sun } from 'lucide-react';
+import TypoApp from './typo/TypoApp';
 
 interface CustomCheckboxProps {
   checked: boolean;
@@ -2092,9 +2093,12 @@ export default function App() {
       )}
 
       {activeTab === 'typo' && (
-        <div className="flex flex-col items-center justify-center h-full opacity-50 mt-20">
-          <p className="text-xl font-bold">Typography Scale (Coming Soon)</p>
-        </div>
+        <TypoApp
+          theme={theme}
+          toggleTheme={toggleTheme}
+          onCancel={handleCancel}
+          showToast={showToast}
+        />
       )}
 
       {/* Bottom Gradient Overlay with Glassmorphic Gradient Blur */}
@@ -2110,6 +2114,7 @@ export default function App() {
         }}
       />
 
+      {activeTab === 'color' && (
       <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-2xl border transition-colors duration-300 ${theme === 'light' ? 'bg-white/80 border-white/60 shadow-xl shadow-slate-200/50' : 'bg-[#111111]/80 border-white/10 shadow-2xl shadow-black/80'} rounded-full p-2 flex gap-3 items-center z-40`}>
         {activeTab === 'color' && (
         <>
@@ -2278,6 +2283,7 @@ export default function App() {
           )}
         </button>
       </div>
+      )}
     </div>
   );
 }

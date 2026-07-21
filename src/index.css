@@ -1,6 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Typography feature — fonts from Figma spec (IBM Plex Mono for numerics, Inter for labels) */
+.font-plex { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+.font-inter { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
 
 body {
   margin: 0;
