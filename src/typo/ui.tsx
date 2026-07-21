@@ -95,7 +95,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
 
       {open && (
         <div className={cx(
-          'absolute z-50 mt-2 max-h-[304px] overflow-y-auto no-scrollbar flex flex-col gap-0.5',
+          'absolute z-50 mt-2 max-h-[304px] overflow-y-auto overscroll-contain figma-scrollbar flex flex-col gap-0.5',
           menuWidthClass,
           align === 'right' ? 'right-0' : 'left-0',
           menuSurface(theme),
@@ -249,7 +249,7 @@ export const FontPicker: React.FC<{
         <div
           ref={listRef}
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
-          className={cx('max-h-[304px] overflow-y-auto no-scrollbar flex flex-col gap-0.5', menuWidthClass, menuSurface(theme))}
+          className={cx('max-h-[304px] overflow-y-auto overscroll-contain figma-scrollbar flex flex-col gap-0.5', menuWidthClass, menuSurface(theme))}
         >
           {filtered.length === 0 ? (
             <div className={cx('px-3 py-2 text-[13px] font-semibold', theme === 'light' ? 'text-slate-400' : 'text-white/40')}>No font found</div>

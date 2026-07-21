@@ -1310,7 +1310,133 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 pr-2">
+        <div className="flex items-center gap-1 pr-2">
+          {/* Import Dropdown Button */}
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsImportDropdownOpen(prev => !prev);
+                setIsExportDropdownOpen(false);
+              }}
+              className={`text-sm font-semibold px-4 py-1.5 rounded-full transition-all ${isImportDropdownOpen
+                ? (theme === 'light' ? 'bg-slate-900 text-white' : 'bg-white text-black')
+                : (theme === 'light' ? 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-900' : 'text-slate-400 hover:bg-white/10 hover:text-white')}`}
+            >
+              Import
+            </button>
+
+            {/* Import Dropdown Menu */}
+            {isImportDropdownOpen && (
+              <div className={`absolute top-full mt-3 right-0 backdrop-blur-2xl border p-1.5 shadow-2xl rounded-2xl flex flex-col gap-1 w-[160px] z-50 ${theme === 'light' ? 'bg-white/95 border-slate-200 shadow-slate-200/50 text-slate-800' : 'bg-[#181818]/95 border-white/10 shadow-black/80 text-white'}`}>
+                <button
+                  onClick={() => {
+                    setIsImportDropdownOpen(false);
+                    parent.postMessage({ pluginMessage: { type: 'IMPORT_FROM_DESIGN' } }, '*');
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="9" cy="9" r="2" />
+                    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                  </svg>
+                  <span>From Design</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsImportDropdownOpen(false);
+                    parent.postMessage({ pluginMessage: { type: 'GET_VARIABLES_FOR_IMPORT' } }, '*');
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                    <line x1="12" y1="22.08" x2="12" y2="12" />
+                  </svg>
+                  <span>From Variable</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsImportDropdownOpen(false);
+                    parent.postMessage({ pluginMessage: { type: 'GET_STYLES_FOR_IMPORT' } }, '*');
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
+                    <path d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+                  </svg>
+                  <span>From Style</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Export Dropdown Button */}
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExportDropdownOpen(prev => !prev);
+                setIsImportDropdownOpen(false);
+              }}
+              className={`text-sm font-semibold px-4 py-1.5 rounded-full transition-all ${isExportDropdownOpen
+                ? (theme === 'light' ? 'bg-slate-900 text-white' : 'bg-white text-black')
+                : (theme === 'light' ? 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-900' : 'text-slate-400 hover:bg-white/10 hover:text-white')}`}
+            >
+              Export
+            </button>
+
+            {/* Export Dropdown Menu */}
+            {isExportDropdownOpen && (
+              <div className={`absolute top-full mt-3 right-0 backdrop-blur-2xl border p-1.5 shadow-2xl rounded-2xl flex flex-col gap-1 w-[160px] z-50 ${theme === 'light' ? 'bg-white/95 border-slate-200 shadow-slate-200/50 text-slate-800' : 'bg-[#181818]/95 border-white/10 shadow-black/80 text-white'}`}>
+                <button
+                  onClick={() => {
+                    setIsExportDropdownOpen(false);
+                    generateFigmaNodes();
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="9" cy="9" r="2" />
+                    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                  </svg>
+                  <span>To Design</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsExportDropdownOpen(false);
+                    handleExportClick();
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                    <line x1="12" y1="22.08" x2="12" y2="12" />
+                  </svg>
+                  <span>To Variable</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsExportDropdownOpen(false);
+                    handleExportStylesClick();
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                    <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
+                    <path d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+                  </svg>
+                  <span>To Style</span>
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={handleCancel}
             className={`text-sm font-semibold px-4 py-1.5 rounded-full transition-all ${theme === 'light' ? 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-900' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
@@ -2091,159 +2217,16 @@ export default function App() {
 
       {activeTab === 'color' && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-2xl border transition-colors duration-300 ${theme === 'light' ? 'bg-white/80 border-white/60 shadow-xl shadow-slate-200/50' : 'bg-[#111111]/80 border-white/10 shadow-2xl shadow-black/80'} rounded-full p-2 flex gap-3 items-center z-40`}>
-          {activeTab === 'color' && (
-            <>
-              <div className="flex gap-2 items-center">
-                <button
-                  onClick={addScale}
-                  className={`p-2 w-10 h-10 rounded-full transition-all flex items-center justify-center ${theme === 'light' ? 'text-slate-500 hover:bg-black hover:text-white' : 'text-slate-400 hover:bg-white hover:text-black'}`}
-                  title="Add Scale"
-                >
-                  <Plus className="w-5 h-5" />
-                </button>
-                <div className={`w-[1px] h-6 mx-1 ${theme === 'light' ? 'bg-slate-200' : 'bg-white/10'}`}></div>
-
-                {/* Import Dropdown Button */}
-                <div className="relative">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsImportDropdownOpen(prev => !prev);
-                      setIsExportDropdownOpen(false);
-                    }}
-                    className={`font-bold w-[104px] text-sm py-2 rounded-full transition-all flex items-center justify-center gap-1.5 ${isImportDropdownOpen
-                        ? (theme === 'light' ? 'bg-black text-white' : 'bg-white text-black')
-                        : (theme === 'light' ? 'bg-black/5 hover:bg-black text-black hover:text-white' : 'bg-white/5 hover:bg-white/10 text-white')
-                      }`}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-90">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    <span>Import</span>
-                  </button>
-
-                  {/* Import Dropdown Menu */}
-                  {isImportDropdownOpen && (
-                    <div className={`absolute bottom-full mb-3 left-1/2 -translate-x-1/2 backdrop-blur-2xl border p-1.5 shadow-2xl rounded-2xl flex flex-col gap-1 w-[160px] z-50 ${theme === 'light' ? 'bg-white/95 border-slate-200 shadow-slate-200/50 text-slate-800' : 'bg-[#181818]/95 border-white/10 shadow-black/80 text-white'}`}>
-                      <button
-                        onClick={() => {
-                          setIsImportDropdownOpen(false);
-                          parent.postMessage({ pluginMessage: { type: 'IMPORT_FROM_DESIGN' } }, '*');
-                        }}
-                        className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
-                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                          <circle cx="9" cy="9" r="2" />
-                          <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-                        </svg>
-                        <span>From Design</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsImportDropdownOpen(false);
-                          parent.postMessage({ pluginMessage: { type: 'GET_VARIABLES_FOR_IMPORT' } }, '*');
-                        }}
-                        className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
-                          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                          <line x1="12" y1="22.08" x2="12" y2="12" />
-                        </svg>
-                        <span>From Variable</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsImportDropdownOpen(false);
-                          parent.postMessage({ pluginMessage: { type: 'GET_STYLES_FOR_IMPORT' } }, '*');
-                        }}
-                        className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
-                          <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
-                          <path d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
-                        </svg>
-                        <span>From Style</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Export Dropdown Button */}
-                <div className="relative">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsExportDropdownOpen(prev => !prev);
-                      setIsImportDropdownOpen(false);
-                    }}
-                    className={`font-bold w-[104px] text-sm py-2 rounded-full transition-all flex items-center justify-center gap-1.5 ${isExportDropdownOpen
-                        ? (theme === 'light' ? 'bg-black text-white' : 'bg-white text-black')
-                        : (theme === 'light' ? 'bg-black/5 hover:bg-black text-black hover:text-white' : 'bg-white/5 hover:bg-white/10 text-white')
-                      }`}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-90">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="17 8 12 3 7 8" />
-                      <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                    <span>Export</span>
-                  </button>
-
-                  {/* Export Dropdown Menu */}
-                  {isExportDropdownOpen && (
-                    <div className={`absolute bottom-full mb-3 left-1/2 -translate-x-1/2 backdrop-blur-2xl border p-1.5 shadow-2xl rounded-2xl flex flex-col gap-1 w-[160px] z-50 ${theme === 'light' ? 'bg-white/95 border-slate-200 shadow-slate-200/50 text-slate-800' : 'bg-[#181818]/95 border-white/10 shadow-black/80 text-white'}`}>
-                      <button
-                        onClick={() => {
-                          setIsExportDropdownOpen(false);
-                          generateFigmaNodes();
-                        }}
-                        className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
-                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                          <circle cx="9" cy="9" r="2" />
-                          <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-                        </svg>
-                        <span>To Design</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsExportDropdownOpen(false);
-                          handleExportClick();
-                        }}
-                        className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
-                          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                          <line x1="12" y1="22.08" x2="12" y2="12" />
-                        </svg>
-                        <span>To Variable</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsExportDropdownOpen(false);
-                          handleExportStylesClick();
-                        }}
-                        className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl text-left transition-colors ${theme === 'light' ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
-                          <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
-                          <path d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
-                        </svg>
-                        <span>To Style</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className={`w-[1px] h-6 ${theme === 'light' ? 'bg-slate-200' : 'bg-white/10'}`}></div>
-            </>
-          )}
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={addScale}
+              className={`p-2 w-10 h-10 rounded-full transition-all flex items-center justify-center ${theme === 'light' ? 'text-slate-500 hover:bg-black hover:text-white' : 'text-slate-400 hover:bg-white hover:text-black'}`}
+              title="Add Scale"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+            <div className={`w-[1px] h-6 mx-1 ${theme === 'light' ? 'bg-slate-200' : 'bg-white/10'}`}></div>
+          </div>
           <button
             onClick={toggleTheme}
             className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${theme === 'light' ? 'text-slate-500 hover:bg-black hover:text-white' : 'text-slate-400 hover:bg-white hover:text-black'}`}

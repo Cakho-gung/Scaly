@@ -5,7 +5,7 @@ import {
   buildGeneratedRungs, fmtSize, orderedRungs, rungSize,
 } from './logic';
 import { cx, Counter, Dropdown, EditableField, FieldLabel, FontPicker, RoundingButton } from './ui';
-import { Monitor, Tablet, Smartphone, Moon, Sun } from './icons';
+import { Monitor, Tablet, Smartphone, Moon, Sun, Rows, EyeOff } from './icons';
 import MappingStage from './MappingStage';
 
 interface TypoAppProps {
@@ -46,6 +46,8 @@ export default function TypoApp({ theme, toggleTheme, onCancel, showToast }: Typ
   const [round, setRound] = useState(0);   // 0 = whole number, 1/2/3 = decimals
   const [previewFont, setPreviewFont] = useState('IBM Plex Mono');
   const [fonts, setFonts] = useState<string[]>(MOCK_FONTS);
+  const [collapsed, setCollapsed] = useState(false);   // overview view (§13)
+  const [hideEmpty, setHideEmpty] = useState(false);   // hide empty rungs (§13)
 
   // Ask the Figma backend for the real installed font families (system + added).
   // Falls back to MOCK_FONTS when running outside Figma (e.g. the dev preview).
@@ -99,8 +101,13 @@ export default function TypoApp({ theme, toggleTheme, onCancel, showToast }: Typ
             fonts={fonts}
             primaryFamily={previewFont}
             onPrimaryChange={setPreviewFont}
-            cardCls=""
-            isMapped={(vid) => rungs.some(r => r.tokens.some(t => t.variantId === vid))}
+            cfg={cfg}
+            mode={mode}
+            round={round}
+            stepsUp={stepsUp}
+            stepsDown={stepsDown}
+            collapsed={collapsed}
+            hideEmpty={hideEmpty}
           />
         )}
       </div>
@@ -113,6 +120,10 @@ export default function TypoApp({ theme, toggleTheme, onCancel, showToast }: Typ
         onStage={setStage}
         toggleTheme={toggleTheme}
         showToast={showToast}
+        collapsed={collapsed}
+        onToggleCollapsed={() => setCollapsed(v => !v)}
+        hideEmpty={hideEmpty}
+        onToggleHideEmpty={() => setHideEmpty(v => !v)}
       />
     </>
   );
@@ -258,9 +269,16 @@ interface BottomBarProps {
   onStage: (s: TypoStage) => void;
   toggleTheme: () => void;
   showToast: (msg: string) => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  hideEmpty: boolean;
+  onToggleHideEmpty: () => void;
 }
 
-const BottomBar: React.FC<BottomBarProps> = ({ theme, stage, mode, onMode, onStage, toggleTheme, showToast }) => {
+const BottomBar: React.FC<BottomBarProps> = ({
+  theme, stage, mode, onMode, onStage, toggleTheme, showToast,
+  collapsed, onToggleCollapsed, hideEmpty, onToggleHideEmpty,
+}) => {
   const iconBtn = (active: boolean) => cx(
     'w-10 h-10 rounded-full flex items-center justify-center transition-all',
     active
@@ -297,14 +315,25 @@ const BottomBar: React.FC<BottomBarProps> = ({ theme, stage, mode, onMode, onSta
         <button className={pill} onClick={() => onStage('mapping')}>Mapping →</button>
       ) : (
         <div className="flex gap-2 items-center">
+          <button className={pill} onClick={() => showToast('Scale ratio / Regenerate — coming in Phase 6')} title="Scale ratio (Regenerate)">⚙</button>
           <button className={pill} onClick={() => onStage('generator')}>← Scale</button>
-          <button className={pill} onClick={() => showToast('Export — coming in Phase 6')}>Export</button>
         </div>
       )}
 
       <div className={divider} />
 
-      {/* Theme */}
+      {/* Right group — view toggles (mapping only) + theme (§13) */}
+      {stage === 'mapping' && (
+        <>
+          <button className={iconBtn(collapsed)} title={collapsed ? 'Expand (detail)' : 'Collapse (overview)'} onClick={onToggleCollapsed}>
+            <Rows size={18} strokeWidth={2} />
+          </button>
+          <button className={iconBtn(hideEmpty)} title={hideEmpty ? 'Show empty steps' : 'Hide empty steps'} onClick={onToggleHideEmpty}>
+            <EyeOff size={18} strokeWidth={2} />
+          </button>
+        </>
+      )}
+
       <button
         className={cx('w-10 h-10 flex items-center justify-center rounded-full transition-all', theme === 'light' ? 'text-slate-500 hover:bg-black hover:text-white' : 'text-slate-400 hover:bg-white hover:text-black')}
         title={theme === 'light' ? 'Dark mode' : 'Light mode'}

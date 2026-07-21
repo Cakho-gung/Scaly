@@ -1,4 +1,4 @@
-import type { ModeConfig, TypoMode, TypoRung, TypoCategory } from './types';
+import type { ModeConfig, TypoMode, TypoRung, TypoCategory, TokenWeight } from './types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Core scale logic (§6). Kept pure so Phase 5 can extend (pin / regenerate).
@@ -80,3 +80,41 @@ export const MOCK_FONTS = [
 
 export const PREVIEW_TEXT =
   'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.';
+
+// ── Weights (§11) ─────────────────────────────────────────────────────────────
+// UI-first mock. Phase 6 replaces with the font's real styles from
+// listAvailableFontsAsync (variable font → named instances / wght range).
+export const MOCK_WEIGHTS: TokenWeight[] = [
+  { value: 100, name: 'Thin' },
+  { value: 200, name: 'ExtraLight' },
+  { value: 300, name: 'Light' },
+  { value: 400, name: 'Regular' },
+  { value: 500, name: 'Medium' },
+  { value: 600, name: 'SemiBold' },
+  { value: 700, name: 'Bold' },
+  { value: 800, name: 'ExtraBold' },
+  { value: 900, name: 'Black' },
+];
+
+/** Compact chip label for a weight, e.g. "Regular" → "R", "SemiBold" → "SB" (§11). */
+export function weightAbbr(name: string): string {
+  const caps = name.replace(/[^A-Z]/g, '');
+  return caps || name.slice(0, 1).toUpperCase();
+}
+
+/** Token variant id → display label: "Heading-1" → "Heading 1" (§5.3). */
+export function fmtVariant(id: string): string {
+  return id.replace('-', ' ');
+}
+
+/**
+ * Insert a CUSTOM rung between two neighbours (§9). Size = geometric mean per
+ * mode (the correct midpoint on a geometric scale), pinned so it won't drift.
+ */
+export function makeInsertRung(above: TypoRung, below: TypoRung, cfg: ModeConfig, round = 0): TypoRung {
+  const fixed: Partial<Record<TypoMode, number>> = {};
+  for (const m of MODE_ORDER) {
+    fixed[m] = applyRound(geometricMid(rungSize(above, m, cfg, round), rungSize(below, m, cfg, round)), round);
+  }
+  return { id: uid('c'), step: 0, custom: true, fixed, tokens: [] };
+}

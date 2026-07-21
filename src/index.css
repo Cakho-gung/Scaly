@@ -72,13 +72,49 @@ select option {
   color: white;
 }
 
-/* Hide scrollbar for Chrome, Safari and Opera */
-::-webkit-scrollbar {
-  display: none;
+/* ── Figma-style thin scrollbar (appears on hover) ──────────────────────────── */
+
+/* Default: hide scrollbar globally (preserve existing behavior) */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Figma-style scrollbar: invisible by default, thin thumb on hover */
+.figma-scrollbar {
+  scrollbar-width: thin;            /* Firefox: thin track */
+  scrollbar-color: transparent transparent; /* Firefox: hide by default */
+  transition: scrollbar-color 0.3s;
+}
+.figma-scrollbar:hover {
+  scrollbar-color: rgba(255,255,255,0.25) transparent; /* Firefox: show on hover */
+}
+.dark .figma-scrollbar:hover {
+  scrollbar-color: rgba(255,255,255,0.25) transparent;
+}
+.figma-scrollbar:not(.dark *):hover {
+  scrollbar-color: rgba(0,0,0,0.2) transparent;
 }
 
-/* Hide scrollbar for IE, Edge and Firefox */
-* {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+/* Webkit (Chrome, Safari, Edge) */
+.figma-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.figma-scrollbar::-webkit-scrollbar-button {
+  display: none;
+}
+.figma-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 6px 0;              /* small inset from top/bottom edges */
+}
+.figma-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 9999px;
+  transition: background 0.3s;
+}
+/* Light theme: dark thumb on hover */
+.figma-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.18);
+}
+/* Dark theme: light thumb on hover */
+.dark .figma-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.22);
 }

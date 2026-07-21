@@ -1,8 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
-import type { Theme, TypoCategory } from './types';
-import { DEFAULT_CATEGORIES, uid } from './logic';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { ModeConfig, Theme, TypoCategory, TypoMode, TypoRung, TokenWeight } from './types';
+import {
+  DEFAULT_CATEGORIES, buildGeneratedRungs, makeInsertRung, orderedRungs, uid,
+} from './logic';
 import { cx, FieldLabel, FontPicker } from './ui';
 import { Plus, Minus, X } from './icons';
+import TypeScaleCards, { FontRole, VariantGroup } from './TypeScaleCards';
 
 // Size ladder for "sized" categories — prepend grows larger, append grows smaller (§10).
 const SIZE_ORDER = ['XXXL', 'XXL', 'XL', 'L', 'M', 'S', 'XS', 'XXS', 'XXXS'];
@@ -11,18 +14,79 @@ const SIZE_ORDER = ['XXXL', 'XXL', 'XL', 'L', 'M', 'S', 'XS', 'XXS', 'XXXS'];
 const FONT_RANK_LABELS = ['Primary', 'Secondary', 'Tertiary', 'Quaternary'];
 const MAX_FONTS = 4;
 
+// Compose the stable token label for a variant (matches TypoToken.variantId).
+const variantLabel = (catName: string, v: string) => `${catName}-${v}`;
+
 interface MappingStageProps {
   theme: Theme;
   fonts: string[];               // available font families
   primaryFamily: string;         // inherited from Stage 1
   onPrimaryChange: (f: string) => void;
-  cardCls: string;
-  isMapped: (variantId: string) => boolean;   // orange (mapped) vs dark (unmapped)
+  cfg: ModeConfig;               // per-mode base/ratio (for sizing cards)
+  mode: TypoMode;                // active mode (from bottom bar)
+  round: number;                 // rounding control
+  stepsUp: number;
+  stepsDown: number;
+  collapsed: boolean;            // overview view (§13)
+  hideEmpty: boolean;            // hide rungs with no tokens (§13)
 }
 
-export default function MappingStage({ theme, fonts, primaryFamily, onPrimaryChange, cardCls, isMapped }: MappingStageProps) {
+export default function MappingStage({
+  theme, fonts, primaryFamily, onPrimaryChange, cfg, mode, round, stepsUp, stepsDown, collapsed, hideEmpty,
+}: MappingStageProps) {
   const [secondaries, setSecondaries] = useState<string[]>([]);
   const [categories, setCategories] = useState<TypoCategory[]>(() => DEFAULT_CATEGORIES);
+  // The scale's rungs — the mapping model's source of truth (§6). Seeded once from
+  // the generated ladder; regenerate (§8) is a deliberate action, not live here.
+  const [rungs, setRungs] = useState<TypoRung[]>(() => buildGeneratedRungs(stepsUp, stepsDown));
+
+  // ── Rung / token mutations ───────────────────────────────────────────────────
+  const patchRung = (id: string, fn: (r: TypoRung) => TypoRung) =>
+    setRungs(rs => rs.map(r => (r.id === id ? fn(r) : r)));
+  const patchToken = (rid: string, tid: string, fn: (t: import('./types').TypoToken) => import('./types').TypoToken) =>
+    patchRung(rid, r => ({ ...r, tokens: r.tokens.map(t => (t.id === tid ? fn(t) : t)) }));
+  const pruneTokens = (labels: string[]) =>
+    setRungs(rs => rs.map(r => ({ ...r, tokens: r.tokens.filter(t => !labels.includes(t.variantId)) })));
+
+  const editSize = (rid: string, m: TypoMode, px: number) => patchRung(rid, r => ({ ...r, fixed: { ...r.fixed, [m]: px } }));
+  const resetPin = (rid: string, m: TypoMode) => patchRung(rid, r => { const f = { ...r.fixed }; delete f[m]; return { ...r, fixed: f }; });
+  const addToken = (rid: string, variantId: string) => patchRung(rid, r =>
+    r.tokens.some(t => t.variantId === variantId) ? r
+      : { ...r, tokens: [...r.tokens, { id: uid('t'), variantId, fontRole: 'primary', lineHeightPct: 120, tracking: 0, weights: [] }] });
+  const removeToken = (rid: string, tid: string) => patchRung(rid, r => ({ ...r, tokens: r.tokens.filter(t => t.id !== tid) }));
+  const setTokenFont = (rid: string, tid: string, roleKey: string) => patchToken(rid, tid, t => ({ ...t, fontRole: roleKey }));
+  const setTokenLH = (rid: string, tid: string, pct: number) => patchToken(rid, tid, t => ({ ...t, lineHeightPct: pct }));
+  const setTokenTracking = (rid: string, tid: string, val: number) => patchToken(rid, tid, t => ({ ...t, tracking: val }));
+  const setTokenWeights = (rid: string, tid: string, weights: TokenWeight[]) => patchToken(rid, tid, t => ({ ...t, weights }));
+  const insertStep = (aboveId: string, belowId: string) => setRungs(rs => {
+    const a = rs.find(r => r.id === aboveId); const b = rs.find(r => r.id === belowId);
+    return a && b ? [...rs, makeInsertRung(a, b, cfg, round)] : rs;
+  });
+  const deleteRung = (rid: string) => setRungs(rs => rs.filter(r => r.id !== rid));
+
+  // Mapped = variant is bound to some rung → orange in the Font Style list (§5.2).
+  const mappedSet = useMemo(() => new Set(rungs.flatMap(r => r.tokens.map(t => t.variantId))), [rungs]);
+  const isMapped = (variantId: string) => mappedSet.has(variantId);
+
+  // Font roles a token can point at, resolved to real families for preview (§5.1).
+  const roles: FontRole[] = useMemo(() => [
+    { key: 'primary', label: 'Primary Font', family: primaryFamily },
+    ...secondaries.map((f, i) => ({ key: `secondary-${i}`, label: `${FONT_RANK_LABELS[i + 1]} Font`, family: f })),
+  ], [primaryFamily, secondaries]);
+
+  // Unassigned variants grouped by category, for the per-card "Add style" popover.
+  const availableGroups = (): VariantGroup[] => categories.map(cat => ({
+    cat: cat.name,
+    variants: cat.variants
+      .map(v => ({ id: variantLabel(cat.name, v), label: `${cat.name} ${v}` }))
+      .filter(x => !mappedSet.has(x.id)),
+  }));
+
+  // Cards in view: sort by desktop size (§6), optionally hide empty rungs (§13).
+  const visibleRungs = useMemo(() => {
+    const ordered = orderedRungs(rungs, cfg, round);
+    return hideEmpty ? ordered.filter(r => r.tokens.length > 0) : ordered;
+  }, [rungs, cfg, round, hideEmpty]);
 
   // ── Fonts ──────────────────────────────────────────────────────────────────
   const addSecondary = () => setSecondaries(s =>
@@ -41,21 +105,29 @@ export default function MappingStage({ theme, fonts, primaryFamily, onPrimaryCha
     if (side === 'append' && last < SIZE_ORDER.length - 1) return { ...c, variants: [...c.variants, SIZE_ORDER[last + 1]] };
     return c;
   }));
-  const removeVariant = (catId: string, side: 'prepend' | 'append') => setCategories(cs => cs.map(c => {
-    if (c.id !== catId || c.variants.length <= 1) return c;
-    if (c.kind === 'numbered' || side === 'append') return { ...c, variants: c.variants.slice(0, -1) };
-    return { ...c, variants: c.variants.slice(1) };
-  }));
+  const removeVariant = (catId: string, side: 'prepend' | 'append') => {
+    const cat = categories.find(c => c.id === catId);
+    if (!cat || cat.variants.length <= 1) return;
+    const dropLast = cat.kind === 'numbered' || side === 'append';
+    const removed = dropLast ? cat.variants[cat.variants.length - 1] : cat.variants[0];
+    setCategories(cs => cs.map(c => c.id !== catId ? c
+      : { ...c, variants: dropLast ? c.variants.slice(0, -1) : c.variants.slice(1) }));
+    pruneTokens([variantLabel(cat.name, removed)]);   // gone variant → drop its token (§10)
+  };
 
   // ── Categories ───────────────────────────────────────────────────────────────
-  const deleteCategory = (id: string) => setCategories(cs => cs.filter(c => c.id !== id));
+  const deleteCategory = (id: string) => {
+    const cat = categories.find(c => c.id === id);
+    setCategories(cs => cs.filter(c => c.id !== id));
+    if (cat) pruneTokens(cat.variants.map(v => variantLabel(cat.name, v)));
+  };
   const renameCategory = (id: string, name: string) => setCategories(cs => cs.map(c => (c.id === id ? { ...c, name } : c)));
   const addCategory = () => setCategories(cs => [...cs, { id: uid('c'), name: 'New', kind: 'sized', variants: ['L', 'M', 'S'] }]);
 
   const fontRows = [primaryFamily, ...secondaries];
 
   return (
-    <div className={cx('p-4', cardCls)}>
+    <div className="p-4">
       {/* ── Font Combine ── */}
       <div className="flex items-start bg-transparent gap-1">
         <div className="w-[166px] shrink-0 ">
@@ -126,6 +198,28 @@ export default function MappingStage({ theme, fonts, primaryFamily, onPrimaryCha
           <Plus size={14} strokeWidth={2.5} /> Add
         </button>
       </div>
+
+      {/* ── Type Scale cards (§5.3) ── */}
+      <TypeScaleCards
+        theme={theme}
+        rungs={visibleRungs}
+        mode={mode}
+        cfg={cfg}
+        round={round}
+        roles={roles}
+        collapsed={collapsed}
+        availableGroups={availableGroups}
+        onEditSize={editSize}
+        onResetPin={resetPin}
+        onAddToken={addToken}
+        onRemoveToken={removeToken}
+        onSetTokenFont={setTokenFont}
+        onSetTokenLH={setTokenLH}
+        onSetTokenTracking={setTokenTracking}
+        onSetTokenWeights={setTokenWeights}
+        onInsert={insertStep}
+        onDeleteRung={deleteRung}
+      />
     </div>
   );
 }
