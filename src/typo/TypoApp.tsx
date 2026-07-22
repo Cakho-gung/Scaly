@@ -287,7 +287,7 @@ const BottomBar: React.FC<BottomBarProps> = ({
   );
   const divider = cx('w-px h-6 mx-1', theme === 'light' ? 'bg-slate-200' : 'bg-white/10');
   const pill = cx(
-    'font-inter font-bold text-sm px-4 h-10 rounded-full transition-all flex items-center justify-center gap-1.5',
+    'font-inter font-bold text-sm px-4 h-10 rounded-full transition-all flex items-center justify-center gap-1.5 whitespace-nowrap',
     theme === 'light' ? 'bg-black/5 hover:bg-black hover:text-white text-black' : 'bg-white/5 hover:bg-white/10 text-white',
   );
 

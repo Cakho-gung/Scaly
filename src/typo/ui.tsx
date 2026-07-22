@@ -95,28 +95,30 @@ export const Dropdown: React.FC<DropdownProps> = ({
 
       {open && (
         <div className={cx(
-          'absolute z-50 mt-2 max-h-[304px] overflow-y-auto overscroll-contain figma-scrollbar flex flex-col gap-0.5',
+          'absolute z-50 mt-2',
           menuWidthClass,
           align === 'right' ? 'right-0' : 'left-0',
           menuSurface(theme),
         )}>
-          {options.map(o => {
-            const obj = typeof o === 'string' ? { value: o } as Exclude<DropdownOption, string> : o;
-            return (
-              <button
-                key={obj.value}
-                type="button"
-                onClick={() => { onChange(obj.value); setOpen(false); }}
-                className={menuItemClass(theme, { active: obj.value === value, danger: obj.danger })}
-              >
-                {obj.icon && <span className="shrink-0 w-4 h-4 flex items-center justify-center opacity-80">{obj.icon}</span>}
-                <span className={cx('flex-1 min-w-0 truncate', mono && 'font-plex')}>
-                  {renderOption ? renderOption(obj.value) : (obj.label ?? obj.value)}
-                </span>
-              </button>
-            );
-          })}
-          {footer}
+          <div className="max-h-[304px] overflow-y-auto overscroll-contain figma-scrollbar flex flex-col gap-0.5">
+            {options.map(o => {
+              const obj = typeof o === 'string' ? { value: o } as Exclude<DropdownOption, string> : o;
+              return (
+                <button
+                  key={obj.value}
+                  type="button"
+                  onClick={() => { onChange(obj.value); setOpen(false); }}
+                  className={menuItemClass(theme, { active: obj.value === value, danger: obj.danger })}
+                >
+                  {obj.icon && <span className="shrink-0 w-4 h-4 flex items-center justify-center opacity-80">{obj.icon}</span>}
+                  <span className={cx('flex-1 min-w-0 truncate', mono && 'font-plex')}>
+                    {renderOption ? renderOption(obj.value) : (obj.label ?? obj.value)}
+                  </span>
+                </button>
+              );
+            })}
+            {footer}
+          </div>
         </div>
       )}
     </div>
@@ -249,25 +251,27 @@ export const FontPicker: React.FC<{
         <div
           ref={listRef}
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
-          className={cx('max-h-[304px] overflow-y-auto overscroll-contain figma-scrollbar flex flex-col gap-0.5', menuWidthClass, menuSurface(theme))}
+          className={cx(menuWidthClass, menuSurface(theme))}
         >
-          {filtered.length === 0 ? (
-            <div className={cx('px-3 py-2 text-[13px] font-semibold', theme === 'light' ? 'text-slate-400' : 'text-white/40')}>No font found</div>
-          ) : filtered.map((o, i) => (
-            <button
-              key={o}
-              type="button"
-              data-idx={i}
-              onMouseEnter={() => setHi(i)}
-              onMouseDown={e => { e.preventDefault(); pick(o); }}
-              className={menuItemClass(theme, { active: i === hi })}
-            >
-              <span className="flex-1 min-w-0 truncate">{o}</span>
-              {o === value && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70"><path d="M20 6 9 17l-5-5" /></svg>
-              )}
-            </button>
-          ))}
+          <div className="max-h-[304px] overflow-y-auto overscroll-contain figma-scrollbar flex flex-col gap-0.5">
+            {filtered.length === 0 ? (
+              <div className={cx('px-3 py-2 text-[13px] font-semibold', theme === 'light' ? 'text-slate-400' : 'text-white/40')}>No font found</div>
+            ) : filtered.map((o, i) => (
+              <button
+                key={o}
+                type="button"
+                data-idx={i}
+                onMouseEnter={() => setHi(i)}
+                onMouseDown={e => { e.preventDefault(); pick(o); }}
+                className={menuItemClass(theme, { active: i === hi })}
+              >
+                <span className="flex-1 min-w-0 truncate">{o}</span>
+                {o === value && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70"><path d="M20 6 9 17l-5-5" /></svg>
+                )}
+              </button>
+            ))}
+          </div>
         </div>,
         document.body,
       )}

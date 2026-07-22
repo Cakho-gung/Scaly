@@ -318,10 +318,10 @@ const CardFontPicker: React.FC<{ theme: Theme; families: string[]; value?: strin
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  const textCls = cx('font-inter font-medium text-[14px] leading-[32px] tracking-[0.2px] truncate', c.text4(theme));
+  const textCls = cx('font-inter font-medium text-[11px] leading-[32px] tracking-[0.2px] truncate', c.text4(theme));
 
   if (families.length <= 1) {
-    return <div className={cx('flex items-center max-w-[180px]', textCls)}><span className="truncate">{value ?? '—'}</span></div>;
+    return <div className={cx('flex items-center max-w-[180px] opacity-60', textCls)}><span className="truncate">{value ?? '—'}</span></div>;
   }
 
   return (
@@ -419,18 +419,20 @@ const WeightsCell: React.FC<{ theme: Theme; weights: TokenWeight[]; onChange: (w
       )}
 
       {open && (
-        <div className={cx('absolute z-50 top-9 left-0 w-[200px] flex flex-col gap-0.5 max-h-[280px] overflow-y-auto overscroll-contain figma-scrollbar', menuSurface(theme))}>
-          {MOCK_WEIGHTS.map(w => (
-            <button key={w.value} type="button" onClick={() => toggle(w)} className={menuItemClass(theme, { active: has(w.value) })}>
-              <span className={cx('shrink-0 w-4 h-4 rounded-[5px] border flex items-center justify-center',
-                has(w.value) ? 'bg-[color:var(--pin)] border-transparent' : (theme === 'light' ? 'border-slate-300' : 'border-white/30'))}
-                style={has(w.value) ? { backgroundColor: PIN, borderColor: PIN } : undefined}>
-                {has(w.value) && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}
-              </span>
-              <span className="flex-1 min-w-0 truncate">{w.name}</span>
-              <span className={cx('shrink-0 font-plex text-[11px]', c.text4(theme))}>{w.value}</span>
-            </button>
-          ))}
+        <div className={cx('absolute z-50 top-9 left-0 w-[200px]', menuSurface(theme))}>
+          <div className="flex flex-col gap-0.5 max-h-[280px] overflow-y-auto overscroll-contain figma-scrollbar">
+            {MOCK_WEIGHTS.map(w => (
+              <button key={w.value} type="button" onClick={() => toggle(w)} className={menuItemClass(theme, { active: has(w.value) })}>
+                <span className={cx('shrink-0 w-4 h-4 rounded-[5px] border flex items-center justify-center',
+                  has(w.value) ? 'bg-[color:var(--pin)] border-transparent' : (theme === 'light' ? 'border-slate-300' : 'border-white/30'))}
+                  style={has(w.value) ? { backgroundColor: PIN, borderColor: PIN } : undefined}>
+                  {has(w.value) && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}
+                </span>
+                <span className="flex-1 min-w-0 truncate">{w.name}</span>
+                <span className={cx('shrink-0 font-plex text-[11px]', c.text4(theme))}>{w.value}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -454,26 +456,34 @@ const AddStyleButton: React.FC<{ theme: Theme; groups: () => VariantGroup[]; onP
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen(o => !o)}
-        className={cx('flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium font-inter transition-colors', c.text2(theme),
-          theme === 'light' ? 'hover:bg-black/5' : 'hover:bg-white/10')}>
-        <Plus size={14} strokeWidth={2.5} /> Add
+        className={cx(
+          'w-full flex items-center gap-2 py-1 bg-transparent border-none outline-none cursor-pointer transition-opacity',
+          theme === 'light' ? 'opacity-40 hover:opacity-100' : 'opacity-30 hover:opacity-70',
+        )}>
+        <span className={cx('flex-1 h-px', theme === 'light' ? 'bg-slate-400' : 'bg-white/40')} />
+        <span className={cx('flex items-center gap-1 font-inter font-medium text-[11px] shrink-0 leading-none', c.text2(theme))}>
+          <Plus size={12} strokeWidth={2.5} /> Add
+        </span>
+        <span className={cx('flex-1 h-px', theme === 'light' ? 'bg-slate-400' : 'bg-white/40')} />
       </button>
       {open && (
-        <div className={cx('absolute z-50 top-9 left-0 w-[220px] flex flex-col gap-0.5 max-h-[300px] overflow-y-auto overscroll-contain figma-scrollbar', menuSurface(theme))}>
-          {list.every(g => g.variants.length === 0) ? (
-            <div className={cx('px-3 py-2 text-[13px] font-semibold', c.text4(theme))}>All styles assigned</div>
-          ) : list.map(g => (
-            g.variants.length === 0 ? null : (
-              <div key={g.cat} className="flex flex-col gap-0.5">
-                <div className={cx('px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider', c.text4(theme))}>{g.cat}</div>
-                {g.variants.map(v => (
-                  <button key={v.id} type="button" onClick={() => { onPick(v.id); setOpen(false); }} className={menuItemClass(theme)}>
-                    <span className="flex-1 min-w-0 truncate">{v.label}</span>
-                  </button>
-                ))}
-              </div>
-            )
-          ))}
+        <div className={cx('absolute z-50 top-9 left-0 w-[220px]', menuSurface(theme))}>
+          <div className="flex flex-col gap-0.5 max-h-[300px] overflow-y-auto overscroll-contain figma-scrollbar">
+            {list.every(g => g.variants.length === 0) ? (
+              <div className={cx('px-3 py-2 text-[13px] font-semibold', c.text4(theme))}>All styles assigned</div>
+            ) : list.map(g => (
+              g.variants.length === 0 ? null : (
+                <div key={g.cat} className="flex flex-col gap-0.5">
+                  <div className={cx('px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider', c.text4(theme))}>{g.cat}</div>
+                  {g.variants.map(v => (
+                    <button key={v.id} type="button" onClick={() => { onPick(v.id); setOpen(false); }} className={menuItemClass(theme)}>
+                      <span className="flex-1 min-w-0 truncate">{v.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -502,13 +512,14 @@ const CustomBadge: React.FC<{ theme: Theme; empty: boolean; onDelete: () => void
 // ── Insert strip between cards (§9) ───────────────────────────────────────────
 
 const InsertStrip: React.FC<{ theme: Theme; onClick: () => void }> = ({ theme, onClick }) => (
-  <div className="relative h-8 flex items-center justify-center group/insert">
-    <div className={cx('absolute left-6 right-6 h-px opacity-0 group-hover/insert:opacity-100 transition-opacity',
-      theme === 'light' ? 'bg-slate-300' : 'bg-white/15')} />
+  <div className="relative px-2 flex items-center group/insert opacity-0 hover:opacity-100 transition-opacity">
     <button type="button" onClick={onClick}
-      className={cx('relative flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-medium font-inter transition-all opacity-40 group-hover/insert:opacity-100',
-        c.text2(theme), theme === 'light' ? 'bg-white hover:bg-black/5' : 'bg-[#111] hover:bg-white/10')}>
-      <Plus size={14} strokeWidth={2.5} /> Add
+      className="w-full flex items-center gap-2 py-1 bg-transparent border-none outline-none cursor-pointer">
+      <span className={cx('flex-1 h-px', theme === 'light' ? 'bg-slate-400' : 'bg-white/40')} />
+      <span className={cx('flex items-center gap-1 font-inter font-medium text-[11px] shrink-0 leading-none', c.text2(theme))}>
+        <Plus size={12} strokeWidth={2.5} /> Add
+      </span>
+      <span className={cx('flex-1 h-px', theme === 'light' ? 'bg-slate-400' : 'bg-white/40')} />
     </button>
   </div>
 );
